@@ -1,5 +1,8 @@
 # Setup Kubernetes (K8s) Cluster on AWS
 
+#Officia website for k8s with kops installation
+https://kops.sigs.k8s.io/getting_started/aws/#testing-your-dns-setup
+
 1. Create AWS Amazon EC2 instance (Free one)
 2. yum update -y
 3. aws --version (check the aws version installed)
