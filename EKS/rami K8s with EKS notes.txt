@@ -26,21 +26,12 @@ Using Kubectl allows you to create, inspect, update, and delete Kubernetes objec
 #What is the eksctl?
 eksctl is also command line interface tool for creating and managing clusters on EKS.
 
-
-#What is the KOPS ? https://kops.sigs.k8s.io/getting_started/aws/
-KOPS: Kubernates operations, kops is easiest way to get a production grade Kubernetes cluster up and running.
-kops will not only help you create, destroy, upgrade and maintain production-grade, highly available, Kubernetes cluster, but it will also provision the necessary cloud infrastructure.
-#KOPS Features¶
-Automates the provisioning of Highly Available Kubernetes clusters
-Built on a state-sync model for dry-runs and automatic idempotency
-Ability to generate Terraform
-Supports zero-config managed kubernetes add-ons
-Command line autocompletion
-YAML Manifest Based API Configuration
-Templating and dry-run modes for creating Manifests
-Choose from most popular CNI Networking providers out-of-the-box
-Multi-architecture ready with ARM64 support
-Capability to add containers, as hooks, and files to nodes via a cluster manifest
+#Install AWS CLI
+$curl "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o "awscliv2.zip"
+$unzip awscliv2.zip
+$sudo ./aws/install
+check AWS CLI Version
+$aws --version
 
 
 #kubernates setup in EKS
@@ -101,6 +92,7 @@ IAMFULLAccess
 EC2FullAccess 
 CloudFormationFullAccess
 AmazonEKSClusterPolicy.
+AWSServiceRoleForAmazonEKS 
 AdministratorAccess
 
 and go go to EC2 instance and click on Actions --> Security ---> Modify IAM Role--> chose Role.
@@ -182,7 +174,7 @@ $eksctl create cluster --name my-cluster --region ap-south-1 --fargate
    
 Note: Cluster creation takes several minutes. During creation you will see several lines of output. The last line of output is similar to the following example line.
 #Note:
-Once you have created a cluster, you will find that cluster credentials were added in ~/.kube/config
+Once you have created a cluster, you will find that cluster credentials and about the cluster in this location ~/.kube/config
 $ cat ~/.kube/config 
 
 eksctl created a kubectl config file in ~/.kube or added the new cluster's configuration within an existing config file in ~/.kube on your computer.'
@@ -199,16 +191,58 @@ NAME                                                STATUS   ROLES    AGE     VE
 fargate-ip-192-0-2-0.region-code.compute.internal   Ready    <none>   8m3s    v1.2.3-eks-1234567   192.0.2.0     <none>        Amazon Linux 2   1.23.456-789.012.amzn2.x86_64   containerd://1.2.3
 fargate-ip-192-0-2-1.region-code.compute.internal   Ready    <none>   7m30s   v1.2.3-eks-1234567   192-0-2-1     <none>        Amazon Linux 2   1.23.456-789.012.amzn2.x86_64   containerd://1.2.3
 
-#View the workloads running on your cluster.
+#two ways to create pods in k8s
+1> using command line tool like below
+2> using ml file 
+
+#Approach1
+#create an pod in kubernets cluser using kubectl command?
+$ kubectl run nginx --image=nginx --restart=Never  # This will create a pod named nginx, running with the nginx image on Docker Hub. And by setting the flag --restart=Never we tell Kubernetes to create a single pod rather than a Deployment.
+
+#Approach2 using yml file
+Step1: go to master node or control plain node
+Step2: create an directory with name pods
+Step3: cd pods 
+Step4: create an file and named to pod1.yaml file
+	apiVersion: v1
+	kind: Pod        #kind: pod represents this is the pod  # kind: Deployment represent deployment in pod
+	metadata:
+	  name: webserver
+	spec:
+	  containers:
+	  - name: webserver1       #container1
+		image: nginx:latest
+		ports:
+		- containerPort: 80
+	  - name: webserver2      #container1  
+		image: httpd
+#Note: We can have N number of containers in pod.
+Step5: run the yml file using below command
+$kubectl create -f pod1.yaml
+
+#Note: We can not control the pod that will create in which node. it get create based on the scheduler algorithm by default.
+#we can control the pod that need to be create in specific nodes using node affective
+When we run the  above pod creation command then kubernets automatically generates yml file, if we wanna see the full yml file issue the following commmad
+$kubectl get pod/nameofthepod yml | less
+
+#View the workloads running on your cluster or 
+#to know the pods on which worker node running
 $kubectl get pods -A -o wide
+
 #for example output is as follows
 NAMESPACE     NAME                       READY   STATUS    RESTARTS   AGE   IP          NODE                                                NOMINATED NODE   READINESS GATES
 kube-system   coredns-1234567890-abcde   1/1     Running   0          18m   192.0.2.0   fargate-ip-192-0-2-0.region-code.compute.internal   <none>           <none>
 kube-system   coredns-1234567890-12345   1/1     Running   0          18m   192.0.2.1   fargate-ip-192-0-2-1.region-code.compute.internal   <none>           <none>
 
+#List the pods
+$kubectl get pods
+
 #Describe the pods
-$kubectl describe pod <name of the pod>
+$kubectl describe pod <name of the pod>  or $kubectl describe pod/<name-of-the-pod>
 $kubectl describe pod coredns-1234567890-abcde
+
+#to delete the pod
+$kubectl delete name-of-the-pod
 
 #To delete the EKS cluster
 $ eksctl delete cluster demo-cluster --region ap-south-1
@@ -216,7 +250,7 @@ $ eksctl delete cluster demo-cluster --region ap-south-1
 # Deploying Nginx pods on Kubernetes
 ====================================
 #Deploying Nginx Container:
-$ kubectl create deployment  demo-nginx --image=nginx --replicas=2 --port=80
+$ kubectl create deployment  demo-nginx --image=nginx --replicas=2 --port=80    #here replicas represent no of pods need to be run
 
 $kubectl get deployment
 [root@k8s-mgmt-svr ~]# kubectl get deployment
@@ -228,6 +262,23 @@ $ kubectl get all
 NAME                 TYPE        CLUSTER-IP   EXTERNAL-IP   PORT(S)   AGE
 service/kubernetes   ClusterIP   10.100.0.1   <none>        443/TCP   45m
 
+#Add another worker nodes to cluster using eksctl
+Firtst run the below command in master node and it givee you the join command that command run on the worker nodes.
+$kubectl 
+
+#Add another worker nodes to cluster using kubeadm
+Still on the existing master node, print the join command
+$kubeadm token create --print-join-command  #  run this command on the master node only
+#You will get an output like this and run the below output commmad in worker node only.
+kubeadm join k8s-endpoint:6443 --token 4iegnp.x2tfqdd9gl93zz1o --discovery-token-ca-cert-hash sha256:
+worker-node1> $ kubeadm join k8s-endpoint:6443 --token 4iegnp.x2tfqdd9gl93zz1o --discovery-token-ca-cert-hash sha256:
+
+#Change the master-node ip address
+$kubectl -n kube-system edit svc fci-proxy-router
+Go to the first occurrence of two sections that list externalIPs. For example, suppose that 172.16.241.36 was entered for both the manager.ip and the manager.external_ip options:
+externalIPs:
+- 172.16.241.36
+- 172.16.241.36
 
 #Expose the deployment as service. This will create an ELB in front of those 2 containers and allow us to publicly access them.
 $ kubectl expose deployment demo-nginx --port=80 --type=LoadBalancer
