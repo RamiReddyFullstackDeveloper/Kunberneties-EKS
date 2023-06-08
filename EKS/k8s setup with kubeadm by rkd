@@ -64,7 +64,7 @@ sudo chown $(id -u):$(id -g) $HOME/.kube/config
 To create a regular user called devops
   useradd -d /home/devops -m -s /bin/bash devops 
 [-m is modify the user] [-d i the directory] [-s is the shell which shell need here i need bash instead of sh]
-  passwd devops [ Assign Password for the devops user ]
+  passwd devops [ Assign Password for the devops user ] i assigned pwd is the kubeadm@123
   id devops
 Give sudo access to devops user
   Visudo
