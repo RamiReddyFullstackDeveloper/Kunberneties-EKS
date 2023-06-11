@@ -1,8 +1,33 @@
-================================================
+#!/bin/bash
+GCP User Name: ramireddyvakamalla@gmail.com
+PWD :
+
+There are two ways two create cluster like same as eks
+Approach1> Using GCP Dashboard  [in AWS using EKS]
+Approach2> Using command line tool #which is most recommended approach
+In GCP For 2nd approach is click on activate cloud shell which is presetn right side of search button
+
+#To set your cloud platform
+
+Here we need three machines 
+one for control-plain    # need at lase two vcups and 4GB RAM
+another two for worker-nodes.
+
+Step1: Login into GCP and click on Navigation menu (left side three horizontal lines)
+Step2: Create VM Instance Navigation menu --> Compute Engine --> VM Instances
+Instance Name: Control-plain   #need at lase two vcups and 4GB RAM
+Select Bood Disk as Ubuntu (including for worker node as well) and leave rest as it is.
+      Ubuntu version : Ubuntu 20.04 LTS (x86/64, amd64 focal image built on 2023-06-05, supports Shielded VM features)
+	  And Select or Create
+Leave everythng as it is.
+Step3: Click Create Button.
+Step4: Once machine is ready state or start state and select check box of the machine and right top corner side near bell icon click the Activate cloud shell button and in the bottom window it will open  and click the continue button.
+#Cloud shell
+now cloud shell is available to stat our work in order to make cloud shel is bigger one click the open in new window one near cross mark on right side of the cloud shell. then close the previous one by clicking on the cross button.
+
+#I have created user as devops and its pwd is kubeadm@123 in GCP
 Building a Kubernetes 1.22 Cluster with kubeadm for Production
-====================================================
-Note: Perform only through SSH in GCP or Putty don't use cloud shell else you face some problems
-Note: 
+==============================================================================================
 A.	Install Packages
 1.	Log into the Control Plane Node (Note: The following steps must be performed on all three nodes.).
       2. Create configuration file for containerd:
@@ -53,18 +78,19 @@ EOF
 	     sudo apt-mark hold kubelet kubeadm kubectl
         19. Log into both Worker Nodes to perform previous steps.
 
-B. Initialize the Cluster
+# B. Initialize the Cluster
+============================
 1.	Initialize the Kubernetes cluster on the control plane node using kubeadm (Note: This is only performed on the Control Plane Node):
-sudo kubeadm init --pod-network-cidr 192.168.0.0/16 --kubernetes-version 1.22.0   #here pod network cidr is the vpc all work nodes will get create under this ip as subnets.
+$ sudo kubeadm init --pod-network-cidr 192.168.0.0/16 --kubernetes-version 1.22.0  #here ip address is for subnets of pods
 2.	Set kubectl access:
 mkdir -p $HOME/.kube
 sudo cp -i /etc/kubernetes/admin.conf $HOME/.kube/config
 sudo chown $(id -u):$(id -g) $HOME/.kube/config
 ============================================
-To create a regular user called devops
-  useradd -d /home/devops -m -s /bin/bash devops 
+#To create a regular user called devops
+$ useradd -d /home/devops -m -s /bin/bash devops 
 [-m is modify the user] [-d i the directory] [-s is the shell which shell need here i need bash instead of sh]
-  passwd devops [ Assign Password for the devops user ] i assigned pwd is the kubeadm@123
+  passwd devops [ Assign Password for the devops user ]
   id devops
 Give sudo access to devops user
   Visudo
@@ -79,16 +105,174 @@ sudo chown $(id -u):$(id -g) $HOME/.kube/config
 =====================================================
 
 3.	Test access to cluster:
-kubectl get nodes
-C. Install the Calico Network Add-on
+$ kubectl get nodes
+
+#C. Install the Calico Network Add-on
 1.	On the Control Plane Node, install Calico Networking:
-kubectl apply -f https://docs.projectcalico.org/manifests/calico.yaml
+$ kubectl apply -f https://docs.projectcalico.org/manifests/calico.yaml
 2.	Check status of the control plane node:
-kubectl get nodes
+$ kubectl get nodes
 D. Join the Worker Nodes to the Cluster
 1.	In the Control Plane Node, create the token and copy the kubeadm join command (NOTE:The join command can also be found in the output from kubeadm init command):
-kubeadm token create --print-join-command
+$ kubeadm token create --print-join-command
 2.	In both Worker Nodes, paste the kubeadm join command to join the cluster. Use sudo to run it as root:
-sudo kubeadm join ...
+$ sudo kubeadm join ...
 3.	In the Control Plane Node, view cluster status (Note: You may have to wait a few moments to allow all nodes to become ready):
-kubectl get nodes
+$ kubectl get nodes
+
+
+#==================================================================================================================
+Note: Install k8s cluster in control-plain machine only. Once cluster is installed successfully you will see join command to join the worker nodes to master node this command we need to run in worker nodes only.
+
+Note2: No worries even you forgot the above join command (above means at the time cluster cr, when ever you want to join the worker nodes to master node run the below token create command in master node and it will give you join command copy that entre that command and run in your worker nodes it will automatcally register with master nodes that sit.
+
+#Add another worker nodes to cluster using kubeadm in GKE or AWS or Azure
+Still on the existing master node, print the join command
+$kubeadm token create --print-join-command  #  run this command on the master node only
+#You will get an output like this and run the below output commmad in worker node only.
+kubeadm join k8s-endpoint:6443 --token 4iegnp.x2tfqdd9gl93zz1o --discovery-token-ca-cert-hash sha256:
+worker-node1> $ kubeadm join k8s-endpoint:6443 --token 4iegnp.x2tfqdd9gl93zz1o --discovery-token-ca-cert-hash sha256:
+
+
+#===================================================================================================================
+Pods - Running containers in Kubernetes
+●	Pods are the smallest deployable units of computing that we can create and manage in Kubernetes.
+●	A Pod is a group of one or more containers, with shared storage and network resources.
+●	Pods have a single IP address that is applied to every container within the pod.
+●	Pods can be of 2 types - Managed Pods and Unmanaged Pods
+●	Remember, you CANNOT edit specifications of an existing POD other than the below -
+⇒ spec.containers[*].image
+⇒ spec.initContainers[*].image
+⇒ spec.activeDeadlineSeconds
+⇒ spec.tolerations
+
+Labels & Annotations :
+1.	Both of them are basically Metadata information.
+2.	Labels can be used for identifying the resource but annotations provide just the metadata info of that resource.
+3.	Annotations are NOT used for identification purpose
+4.	Labels are key/value pairs that are attached to objects, such as pods.
+
+How to host a Particular Pod on a specific Node?
+1.	We can constrain a Pod so that it can only run on a particular set of Node(s). 
+2.	nodeSelector is the simplest recommended form of node selection constraint.
+3.	As cluster admin, set the labels for the worker nodes 
+kubectl edit node <node_name>
+4.	nodeSelector is a field of PodSpec.
+
+Namespace 
+1.	Namespace allows users to logically group multiple resources.
+2.	To display the available namespaces - 
+	kubectl get ns
+Kubernetes starts with four initial namespaces:
+●	default The default namespace for objects with no other namespace.
+●	kube-system The namespace for objects created by the Kubernetes system.
+●	kube-public This namespace is created automatically and is readable by all users (including those not authenticated). This namespace is mostly reserved for cluster usage, in case that some resources should be visible and readable publicly throughout the whole cluster. The public aspect of this namespace is only a convention, not a requirement.
+●	kube-node-lease This namespace for the lease objects associated with each node which improves the performance of the node heartbeats as the cluster scales.
+Replication Controller
+Replication Controller (RC) ⇒ A ReplicationController ensures that a specified number of pod replicas are running at any point of time.
+
+Pods can be of 2 types -
+a.	Managed - Pods are managed by RC.
+b.	Unmanaged - Pods are NOT managed by RC.
+
+Replication Controller ⇒ Replica Count ⇒ Label Selector ⇒ Pod Template ⇒ Pods
+
+Replica Set
+ReplicaSet ⇒ Is the next-generation of Replication Controller
+I want to define 3 Labels in RC ⇒
+	In Replication Controller			In ReplicaSet
+selector:					  selector:
+                 env: dev					       env: * ⇒ means all env/test/prod
+	     env: test
+	     env: prod
+This is why we say that ReplicaSet is more expressive.
+kubectl explain replica set
+kubectl explain replicaset.apiVersion
+
+DaemonSet ⇒ 
+➢	A DaemonSet ensures that all (or some) Nodes run a copy of a Pod. As nodes are added to the cluster, Pods are added to them.
+➢	As nodes are removed from the cluster, those Pods are garbage collected.
+➢	Deleting a DaemonSet will clean up the Pods it created.
+
+Some typical uses of a DaemonSet are:
+●	running a cluster storage daemon on every node
+●	running a logs collection daemon on every node
+●	running a node monitoring daemon on every node
+Kubernetes Service
+----------------------
+1.	A kubernetes service is a resource to make a single, constant point of entry to a group of pods providing the same service.
+2.	Each service has an IP address and port  that never changes while the service exists.
+3.	An easiest way to create a service is to use ⇒ kubectl expose command
+4.	Services are agents which connect Pods together or provide access outside of the cluster.
+5.	The kube-proxy agent watches the Kubernetes API for new services and endpoints being created on each node.
+6.	Services provide automatic load-balancing, matching a label query
+7.	Unique IP addresses are assigned and configured via the etcd database, so that Services implement iptables to route traffic.
+8.	Labels are used to determine which Pods should receive traffic from a service.
+
+Service Types
+-----------------
+a.	ClusterIP ⇒ It is the default service type and only provides access internally within the kubernetes cluster. The range of ClusterIP used is defined via an API server startup option.
+b.	NodePort ⇒ This is great for debugging or when a static IP address is necessary. The NodePort range is defined in the cluster configuration.By default, the range of NodePorts is 30000-32768.
+c.	LoadBalancer ⇒ Was created to pass requests to a cloud provider like GKE / AKS / EKS
+d.	ExternalName ⇒ Is a newer service. It has no selectors nor does it define ports or endpoints. The redirection happens at the DNS level.
+
+Kubernetes Deployments :: A Deployment is responsible for creating and updating instances of your application.
+1.	Once you have a running Kubernetes cluster, you can deploy your containerized applications on top of it. 
+2.	To do so, you create a Kubernetes Deployment configuration.
+3.	The Deployment instructs Kubernetes how to create and update instances of your application.
+4.	Once you've created a Deployment, the Kubernetes control plane schedules the application instances included in that Deployment to run on individual Nodes in the cluster.
+5.	Once the application instances are created, a Kubernetes Deployment Controller continuously monitors those instances. 
+6.	If the Node hosting an instance goes down or is deleted, the Deployment controller replaces the instance with an instance on another Node in the cluster. This provides a self-healing mechanism to address machine failure or maintenance.
+7.	You can create and manage a Deployment by using the Kubernetes command line interface, kubectl. Kubectl uses the Kubernetes API to interact with the cluster.
+8.	When you create a Deployment, you'll need to specify the container image for your application and the number of replicas that you want to run. 
+9.	You can change that information later by updating your Deployment
+Creating a Deployment
+The following is an example of a Deployment. It creates a ReplicaSet to bring up three nginx Pods:
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: nginx-deployment
+  labels:
+    app: nginx
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: nginx
+  template:
+    metadata:
+      labels:
+        app: nginx
+    spec:
+      containers:
+      - name: nginx
+        image: nginx:1.14.2
+        ports:
+        - containerPort: 80
+
+
+#Create VPC / Create FireWall Rule in GCP same as VPC .
+Step1: Search for Firewall and click on FireWall VPC Network.
+Step2: Click Create  Firwall Rule
+       Name : k8s
+	   Direction o traffic : Ingreess  #Incoming request
+	   Targets: As per our requirement but i select for this inastnace only that is Specified Target tags
+	   Target Tags : Cka #any name
+	   Source Filter : ipv4
+	   Source IPV4 Range : 0.0.0.0/0  #allows all kind of ips
+	   Protocols and ports : Allow all.
+Step4: Click Create.
+
+#Now attach this firewall rule to any instance.
+Step1: Go VM Instance
+Step2: Check the VM Instance Check box.
+Step3: Click instance name
+Step4: Click EDIT
+Step4: Go to network tags and add the above network tag name here,so that u can access the instance from out side of the world
+
+	   
+
+  
+
+
+   
