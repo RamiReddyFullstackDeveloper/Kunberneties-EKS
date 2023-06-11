@@ -2,7 +2,243 @@
 
 #Google Kubernets Engine GKE
 Note: Follow the  below official website how to create the cluster in gke and etc
-#https://cloud.google.com/kubernetes-engine/docs/deploy-app-cluster 
+https://cloud.google.com/kubernetes-engine/docs/deploy-app-cluster 
+
+
+
+#GKE has two types of clusters.
+===============================
+https://devopscube.com/setup-kubernetes-cluster-google-cloud/
+
+Autopilot Cluster: All cluster infrastructure operations are taken care of by Google cloud. You just have to focus on application deployments.
+Standard Cluster: Here except for the control plane, you have to manage the underlying infrastructure (Nodes, scaling etc)
+
+#Create VPC With GKE Subnet & Secondary IP Ranges
+Note: Ensure you have the IAM admin permissions to create the network, GKE cluster, and associated components.
+
+You can create the GKE cluster in the default VPC provided by Google cloud. However, for learning and better understanding, lets create our own VPC.
+
+Normally, when we deploy non-containerized workloads on VPC, we would just create subnets with primarry IP ranges.
+
+When it comes to the GKE cluster, we need to create a subnet to host the cluster nodes, and secondary IP ranges under the subnet for the kubernetes pod and service network. In google cloud term; it is called VPC native clusters.
+
+So, lets plan for nework for the following requirements.
+
+Cluster Requirements	                                    Calculated IP ranges
+The cluster should accommodate 200 Nodes. (Primary Subnet)	This means we need a subnet with a minimum of 254 IP addresses. That is 10.0.1.0/24
+Each node should accommodate 75 pods (Secondary range – Pod network)	200×75 = 15000 . So we will /18 secondary range that would give 16384 IP addresses. 172.16.0.0/18 (172.16.0.0 – 172.16.63.255)
+The cluster should support 2000 services. Secondary range – Service network)	This means we need a /21 range for the service network. Assuming we continue from the pod range, it would be be 172.16.64.0/20 (172.16.64.0 – 172.16.79.255)
+Finally we have arrived to the following network ranges.
+
+Primary subnet (For Cluster Nodes) – 10.0.1.0/24
+Secondary network (For pods) – 172.16.0.0/18
+Secondary network (For services) – 172.16.64.0/20 
+
+So here is what we are going to do.
+
+#Create a VPC
+Add a subnet with pod and service secondary range networks.
+Now that we have finalized the network ranges let’s create a VPC network. I am calling network name as gke-network
+$ gcloud compute networks create gke-network --subnet-mode=custom
+
+$ gcloud compute firewall-rules create <FIREWALL_NAME> --network gke-network --allow tcp,udp,icmp --source-ranges <IP_RANGE>
+$ gcloud compute firewall-rules create my-first-fw --network gke-network --allow tcp,udp,icmp --source-ranges 0.0.0.0/0
+$ gcloud compute firewall-rules create my-first-fw --network gke-network --allow tcp:22,tcp:3389,http:80,https:443,icmp
+
+Create a subnet named gke-subnet-a with two secondary ranges named pod-network & service-network
+$ gcloud compute networks subnets create gke-subnet-a \
+    --network gke-network \
+    --region us-central1 \
+    --range 10.0.1.0/24 \
+    --secondary-range pod-network=172.16.0.0/18,service-network=172.16.64.0/20
+	
+By default the subnet creates a routed to the internet gateway. So you dont have to do anything to enable internet access for the nodes.
+
+However, we need to add custom firewall rules to access the nodes from outside the VPC network.
+
+Note: When running production workloads, careful consideration has been given to the network design by keeping the subnets fully private without internet gateways.	
+	
+#Setting Up Kubernetes Cluster On Google Cloud
+=============================================
+
+#GKE Cluster Creation Using gcloud CLI
+--------------------------------------
+Step 1: We will use the gcloud CLI to launch a regional multi-zone cluster.
+
+In our setup, we will be doing the following.
+
+Spin up the cluster in us-central1 the region with one instance per zone (total three zones) using g1-small(1.7GB) machine type with autoscaling enabled.
+Preemptible VMs with autoscaling to a maximum of three-node per to reduce the cost of the cluster.
+Cluster gets deployed with custom VPC, subnets & secondary ranges we created in the previous section.
+Enable the master authorized network to allow only whitelisted IP ranges to connect to the master API. I have given 0.0.0.0/0, you can replace this with your IP address.
+Add a network tag named “webapps” to add a custom firewall rule to the GKE cluster nodes for testing purposes.
+Note: When deploying a cluster in production, more configurations need to be considered for the network and the cluster. It depends on the organizational policy and project requirements.
+
+Now, lets create the cluster using the following command.
+
+$gcloud container clusters create demo-gke \
+      --region us-central1 \
+      --no-enable-ip-alias \
+      --node-locations us-central1-a,us-central1-b,us-central1-c \
+      --num-nodes 1 \
+      --enable-autoscaling \
+      --min-nodes 1 \
+      --max-nodes 3 \
+      --node-labels=env=dev \
+      --machine-type g1-small \
+      --enable-autorepair  \
+      --node-labels=type=webapps \
+      --enable-vertical-pod-autoscaling \
+      --preemptible \
+      --disk-type pd-standard \
+      --disk-size 50 \
+      --enable-ip-alias \
+      --network gke-network \
+      --subnetwork gke-subnet-a \
+      --cluster-secondary-range-name pod-network \
+      --services-secondary-range-name service-network \
+      --tags=webapp \
+      --enable-master-authorized-networks \
+      --master-authorized-networks=0.0.0.0/0
+On a successful execution, you will see the cluster details in the output as shown below.
+
+#Note: When you ran above cluster creation command and you might face below error then run the folowing command.
+ERROR: (gcloud.container.clusters.create) ResponseError: code=400, message=Failed precondition when calling the ServiceConsumerManager: tenantmanager::185014: Consumer 558172123189 should enable service:container.googleapis.com before generating a service account\
+
+root@cloudshell:~ (my-second-project-389507)$ gcloud services enable container.googleapis.com
+Operation "operations/acf.p2-558172123189-8ac03dd0-d391-4363-b567-0972ee8f3699" finished successfully.
+
+Also, you check the google kubernetes engine dashboard to view all the details about the cluster.
+
+
+# you can get all the information about the  GKE cluster using the following command.
+-------------------------------------------------------------------------------------
+$ gcloud container clusters describe  demo-gke --region=us-central1
+
+#Now, we need to download the cluster kubeconfig to our location workstation.
+---------------------------------------------------------------------------
+The following command generates the kubeconfig and adds it to the ~/.kube/config file.	
+$ gcloud container clusters get-credentials demo-gke  --region=us-central1
+
+#gcloud Kubectl Component Installation
+----------------------------------------
+Kubectl is a command-line utility for interacting with the kubernetes cluster. You can get more information about kubectl from here 
+If you already have kubectl in your workstation, you can ignore this step.
+To install kubectl component, execute the following gcloud command
+
+$gcloud components install kubectl
+
+Now, you can get your cluster information using the kubectl command using the following command.
+
+$kubectl cluster-info
+
+#Deploy Nginx on GKE for Validation
+------------------------------------
+Let’s deploy a sample Nginx application in a custom namespace to validate the cluster.
+
+Step 1: Create a namespace named demo
+Step 2: Create an file called nginx-dockerfile.yaml and paste the below content.
+<<EOF
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: nginx-deployment
+  namespace: demo
+spec:
+  selector:
+    matchLabels:
+      app: nginx
+  replicas: 2 
+  template:
+    metadata:
+      labels:
+        app: nginx
+    spec:
+      containers:
+      - name: nginx
+        image: nginx:latest
+        ports:
+        - containerPort: 80
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: nginx-service
+  namespace: demo
+spec:
+  selector:
+    app: nginx
+  type: NodePort
+  ports:
+    - port: 80
+      targetPort: 80
+      nodePort: 32000
+EOF
+
+Step4: run the above file using beloc command
+ $kubectl apply -f <name-of-the-dockerfile>
+ 
+Step5: Lets check the deployment status.
+
+$ kubectl get deployments -n demo
+
+Step6: Also lets describe the service and check the nodePort details.
+$ kubectl describe svc nginx-service -n demo
+
+Step 3: Now to access the application on node port 32000, you need to add an ingress firewall rule to allow traffic on port 32000 from the internet.
+
+This rule is applicable for all instances with gke-webapps tag in gke-network
+$gcloud compute firewall-rules create gke-webapps \
+    --network=gke-network \
+    --allow=tcp:32000 \
+    --description="Allow incoming traffic on TCP port 32000" \
+    --direction=INGRESS \
+    --source-ranges="0.0.0.0/0" \
+    --target-tags="gke-webapps"
+	
+For demonstration purposes, I am adding 0.0.0.0/0 as the source IP range. Meaning, allow traffic from anywhere on the internet.
+
+We deployed the cluster with a network tag named “gke-webapps“. So we need to add a firewall rule that applies to the gke-webapps tag. The rule gets applied to all the cluster instances as it has the gke-webapps tag attached to it.
+
+Step 5: Now that we have added the rule, lets try accessing the Nginx app using a nodes IP.
+
+The following command will list all GKE nodes with their public IP address. Grab one IP and try accessing port 32000 and see if you can access the Nginx page.
+
+$ gcloud compute instances list --filter="name~'gke-demo-*'"
+
+For example, http://35.224.101.80:32000/
+
+#Expose Nginx as a Loadbalancer Service
+
+The same deployment can be exposed as a Loadbalancer by modifying the NodePort to Loadbalancer in the service file. GKE will create a Loadbancer that points to the Nginx service endpoint.
+
+apiVersion: v1
+kind: Service
+metadata:
+  name: nginx-service
+  namespace: demo
+spec:
+  selector:
+    app: nginx
+  type: LoadBalancer
+  ports:
+    - port: 80
+      targetPort: 80
+	  
+
+
+#Delete GKE Cluster
+If you want to delete the GKE cluster, use the following command.
+
+gcloud container clusters delete demo-gke --region us-central1  --quiet
+Also, to remove the firewall rule, execute the following command.
+
+$ gcloud compute firewall-rules delete gke-webapps --quiet
+
+===================================================================================================================================================
+Kuberbets cluster creation using officeal document
+==================================================================================================================================================
 
 #Before you begin
 Take the following steps to enable the Kubernetes Engine API:
@@ -36,17 +272,37 @@ A cluster consists of at least one cluster control plane machine and multiple wo
 Create an Autopilot cluster named hello-cluster:
 
 $gcloud container clusters create-auto hello-cluster \
-    --region=COMPUTE_REGION
+    --region=us-west1
+
+# To set the default maximum Pods per node using the gcloud CLI, run the following command:
+#Configure the maximum Pods per node
+You can configure the maximum number of Pods per node when creating a cluster or when creating a node pool. You cannot change this setting after the cluster or node pool is created.
+
+However, if you run out of Pod IP addresses, you can create additional Pod IP address ranges using discontiguous multi-Pod CIDR.
+You can set the size of the Pod address range when creating a cluster by using the gcloud CLI or the Google Cloud console.
+
+$ gcloud container clusters create hello-cluster \
+    --enable-ip-alias \
+    --cluster-ipv4-cidr=10.0.0.0/21 \
+    --services-ipv4-cidr=10.4.0.0/19 \
+    --create-subnetwork=name='k8s-subnet',range=10.5.32.0/27 \
+    --default-max-pods-per-node=100 \
+    --zone=us-west1-a
 
 $Replace COMPUTE_REGION with your Compute Engine region, such as us-west1.
 
-Note: It might take several minutes to finish creating the cluster.
+1Note: It might take several minutes to finish creating the cluster.
+
 
 #Get authentication credentials for the cluster
 After creating your cluster, you need to get authentication credentials to interact with the cluster:
 
-$gcloud container clusters get-credentials hello-cluster \
+$ gcloud container clusters get-credentials hello-cluster \
     --region COMPUTE_REGION
+	
+#Describe the cluster
+$ gcloud container clusters describe <cluster-name> --region=us-central1
+
 	
 #Deploy an application to the cluster
 Now that you have created a cluster, you can deploy a containerized application to it. For this quickstart, you can deploy our example web application, hello-app.
@@ -99,3 +355,23 @@ $gcloud container clusters delete hello-cluster   --region COMPUTE_REGION
 
 https://cloud.google.com/kubernetes-engine/docs/deploy-app-cluster#dockerfile
 
+
+#Gcloud cluster creation options
+
+ERROR: (gcloud.container.clusters.create) argument --region: At most one of --location | --region | --zone can be specified.
+Usage: gcloud container clusters create NAME [optional flags]
+  optional flags may be  --accelerator | --additional-zones | --addons |
+                         --async | --autoprovisioning-config-file |
+                         --autoprovisioning-image-type |
+                         --autoprovisioning-locations |
+                         --autoprovisioning-max-surge-upgrade |
+                         --autoprovisioning-max-unavailable-upgrade |
+                         --autoprovisioning-min-cpu-platform |
+                         --autoprovisioning-network-tags |
+                         --autoprovisioning-node-pool-soak-duration |
+                         --autoprovisioning-scopes |
+                         --autoprovisioning-service-account |
+                         --autoprovisioning-standard-rollout-policy |
+                         --autoscaling-profile | --binauthz-evaluation-mode |
+                         --boot-disk-kms-key | --cloud-run-config |
+                         --cluster-dns | --cluster-dns-domain |
