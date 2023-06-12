@@ -1,0 +1,62 @@
+1. Create the same deployment using a yaml file
+2. Display the details of this deployment via the command line
+3. Update the yaml file to scale the deployment to 4 nginx containers
+4. Verify the change via the command line
+-------------------------------------------------------------------------
+1| Create Deployment Using Yaml Definition
+To get started, we will create a new folder inside our Kubernetes file:
+cd into new directory
+Touchto create a new file
+Run the command vim my-nginx.yaml
+Copy/paste the following YAML file and save & quit (escape :wq!):
+
+apiVersion: v1
+kind: Service
+metadata:
+  name: my-nginx-svc
+  labels:
+    app: nginx
+spec:
+  type: LoadBalancer
+  ports:
+  - port: 80
+  selector:
+    app: nginx
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: my-nginx
+  labels:
+    app: nginx
+spec:
+  replicas: 4
+  selector:
+    matchLabels:
+      app: nginx
+  template:
+    metadata:
+      labels:
+        app: nginx
+    spec:
+      containers:
+      - name: nginx
+        image: nginx:1.14.2
+        ports:
+        - containerPort: 80
+
+2| Apply the manifest to the Kubernetes cluster
+Multiple resources can be created the same way as a single resource by using the following command:
+
+kubectl apply -f my-nginx.yaml
+
+
+Next, we will verify that everything is working according to our Yaml file. To do this, run the following commands:
+kubectl get pods
+kubectl get deployments
+kubectl get services
+
+3|Access Application from localhost
+To see your website, type http://localhost:80 in your browser and you’ll see everything worked:
+
+
