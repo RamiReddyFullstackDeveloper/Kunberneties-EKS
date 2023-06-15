@@ -1,0 +1,238 @@
+#!/bin/bash
+
+#Kubernetes Docs:
+https://kubernetes.io/docs/home/
+
+#Container Tools
+Docker, Poadman, rkt, skopio, buildah and crictl
+
+#Create Kubernetes Resources
+Deployment[specify the replica count means no of pods need to be create], Pod Template --> Container Image
+Pod, Deployment, ReplicaSet, ReplicationController and Service
+
+#Create Kubernetes Resource Types
+1> Command Line Tools
+2> Manifestfile [Resource Definition File] ==> using YAML file
+
+#Types of nodes in k8s
+1> Master node 
+2> Workr node
+
+Cluster contains the master/control plain and worker nodes
+Worker nodes contains the pods --> pods cntain the container ---> containers contain the applications.
+
+Applications are only get deployed in worker nodes
+We will not put into in master node also know as controll plain node.
+
+Master node / Controll plain node manages the worker nodes and pods in the cluster.
+
+Controll palin node does not host any application container.
+
+#Kube API Server:
+API Server is one of the component in kubernets Control Plain node, that act as proxy server to expose the kubernets API.
+The API Server is the front end for the kubernets control plain node.
+The kube-apiserver is designed to scale horizontally. It scales by deployng more instances, you can run several instances of kube-apiserer and balance traffic between thoise instaces.
+Kube-apiserver also perform the authentication and authorization.
+
+If any request comes to worker nodes that request comes to controll plain only. 
+There is special component in the k8s controll palin that is kube api server.
+The kube API Server will recevie the request and forward the worker node.
+
+#Scheduler:
+It is the responsible for placing the pod in suitable node.
+By Running some algorithem scheduler will find the latest required information of node from etcd DB through api server and place the prod.
+
+How Scheduler know that node information for finding the suitable node to be placed the pod ? Ans by using etcd.
+
+kube scheduler talk to etcd via kuber api server and fetch the required information and scheduler will run the ranking algorithem to find the suitable node to place the pod.
+#Etcd : 
+Is the distributed key value pair, which contains latest cluster state information.
+
+
+#Kube Control Manager
+Kube control plain component that runs the control process.
+Logically each controller is a separate process, but to reduce the complexity they are all compiled into single binary and run in single process.
+
+#Some of the controllers are:
+Node Controller: Responsible for noticing and responding when node is goes down.
+Jobs Controller: Wathces the job objects that represents one-off tasks, then create pods to run those tasks completion.
+Endpoints Controller:  populates the end-point objects [that is joins the services and pods]
+Service Accounts and Token Controllers: Creates default account and api access tokens for new api namespaces.
+
+Kubelet: kublet is the command it responsible for runnning the containers inside the pods.
+
+kube-proxy : define network rule
+
+Kubectl: kubectl is the command to interact with kubernet cluster through the control plainof kube api server.
+         kubectl commmand will read the configuration from the ./kube/config file and communicate to cluster through the api server.
+
+
+Kubeadmn: Kubeadmn is the command where to create the kubernets cluster and manage the cluster if required we can create node and configure to cluster, health of the cluster and etc.
+
+
+Kubernetes does not understand the containers, kubernets understand only pods , pods understand the container only.
+
+#Static nodes
+In static nodes we can get deployed the applications into master node as well.
+
+#Labels:
+Labels are key value pairs that are attached to the kubernetes object such as pods.
+Labels are intended to be used to identifying the attributes of objects that are meaning or relavent to users.
+For example, here's a manifest for a Pod that has two labels environment: production and app: nginx:'
+Labels must be specified under metadata only.
+
+apiVersion: v1
+kind: Pod
+metadata:
+  name: label-demo
+  labels:
+    environment: production
+    app: nginx
+spec:
+  containers:
+  - name: nginx
+    image: nginx:1.14.2
+    ports:
+    - containerPort: 80
+#list the all lables
+
+#list the pods 
+$kubectl get pods
+#list the pods with matching lables
+$kubectl get pods -l app=<label-name>
+#or when we want to display with multiple labels
+$kubectl get pods -l environment=production,tier=frontend
+#or using set based
+$kubectl get pods -l 'environment in (production),tier in (frontend)'
+
+#we can also delete list of pods by specifying labels
+$kubectl delete pod -l env=app
+
+#create label uisng command line tool
+$kubectl label pod <pod-name> <label-key>=<label-value>
+Ex: $kubectl label pod my-pod env=pod
+
+#we can also update the label name using below command.
+$kubectl label pod my-pod env=test --overwrite
+
+#Annotations: 
+Annotations are another way of providing the data kubernets resources similar to labels using key value pairs. but this annotaions are stores arbitary non-identifying the data. For instance you can provide the contact details of responsible person in the deployment annotations.
+apiVersion: v1
+kind: Pod
+metadata:
+  name: demo
+  labels:                      #labels are key value pairs that are attaced to k8s resources but this labels are identify the k8s objects.
+    environment: production
+    app: nginx
+  annotations:                 #Annotations are key value pairs that are attaced to k8s resources , but not identify the k8s resources.
+     komodor.com/owner: alice
+     komodor.com/owner-phone: 7396126247
+	 owner: this is ramireddy my email is ram@gamil.com, phone number and etc.
+	 comapny: JP Morgan and chase
+spec:
+  containers:
+  - name: nginx
+    image: nginx:1.14.2
+    ports:
+    - containerPort: 80
+	
+#Scheduling pods to specific node
+#NodeSelector:
+NodeSelector tells kubernetes to deploy this pod only to node containing/matching the gpu = "true".
+
+#Create a pod that gets scheduled to specific node 
+#Approach1: Using nodeName
+apiVersion: v1
+kind: Pod
+metadata:
+  name: nginx
+spec:
+  nodeName: foo-node # schedule pod to specific node
+  containers:
+  - name: nginx
+    image: nginx
+    imagePullPolicy: IfNotPresent
+	
+#Deploy a Pod to a specific node pool
+#Approach2: Using nodeSelector : First edit the ode and add the labels if we want too
+You can explicitly deploy a Pod to a specific node pool by using a nodeSelector in your Pod manifest. nodeSelector schedules Pods onto nodes with a matching label.
+All GKE node pools have labels with the following format: cloud.google.com/gke-nodepool: POOL_NAME. Add this label to the nodeSelector field in your Pod as shown in the following example:
+
+apiVersion: v1
+kind: Pod
+metadata:
+  name: nginx
+  labels:
+    env: test
+spec:
+  containers:
+  - name: nginx
+    image: nginx
+    imagePullPolicy: IfNotPresent
+  nodeSelector:
+    cloud.google.com/gke-nodepool: POOL_NAME
+	
+#Namespace:
+namespaces provides a mechanism for isolating groups of resources within a single cluster.
+Names of resources need to be unique within a namespace, but not across namespaces.
+
+#Initial namespaces
+Kubernetes starts with four initial namespaces:
+
+default
+Kubernetes includes this namespace so that you can start using your new cluster without first creating a namespace.
+
+#Viewing namespaces 
+You can list the current namespaces in a cluster using:
+$ kubectl get namespaces
+NAME              STATUS   AGE
+default           Active   1d
+kube-node-lease   Active   1d
+kube-public       Active   1d
+kube-system       Active   1d
+
+#Create namespace
+$kubectl create ns dev
+#Delete namespace
+$Kubetl delete ns dev
+
+#creae pod in the dev namaspace
+$kubectl run pod <pod-name> -n <namaspace-name> #this is by 
+$kubectl apply -f <name>.yaml -n <namaspace-name> #declarative  approach
+#Defining namespace in yaml file
+#Create a pod that gets scheduled to specific node and assigned specific namespace and lables
+#Approach1: Using nodeName
+apiVersion: v1
+kind: Pod
+metadata:
+  name: nginx
+  labels: 
+    app: nginx
+	end: dev
+  namespace: dev
+spec:
+  nodeName: foo-node # schedule pod to specific node
+  containers:
+  - name: nginx
+    image: nginx
+    imagePullPolicy: IfNotPresent
+	
+
+
+#Pod Logs storage path
+/var/logs container 
+
+
+#Recource Limit
+Limiting the memory of resource or pods in workder
+
+#Node Affinity
+
+#Start up probe
+
+#Readyness probe
+
+#Liveness probe
+
+
+#

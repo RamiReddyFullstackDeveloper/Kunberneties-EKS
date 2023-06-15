@@ -1,0 +1,346 @@
+#!/bin/bash
+
+#officia website k8s with kops installation
+https://kops.sigs.k8s.io/getting_started/aws/#testing-your-dns-setup
+
+
+#What is the KOPS ? https://kops.sigs.k8s.io/getting_started/aws/
+KOPS: Kubernates operations, kops is easiest way to get a production grade Kubernetes cluster up and running.
+kops will not only help you create, destroy, upgrade and maintain production-grade, highly available, Kubernetes cluster, but it will also provision the necessary cloud infrastructure.
+#KOPS Features¶
+Automates the provisioning of Highly Available Kubernetes clusters
+Built on a state-sync model for dry-runs and automatic idempotency
+Ability to generate Terraform
+Supports zero-config managed kubernetes add-ons
+Command line autocompletion
+YAML Manifest Based API Configuration
+Templating and dry-run modes for creating Manifests
+Choose from most popular CNI Networking providers out-of-the-box
+Multi-architecture ready with ARM64 support
+Capability to add containers, as hooks, and files to nodes via a cluster manifest
+
+#Pre-requisites
+#Step1: AWS CLI
+============================================================================================================================
+#Step2: IAM ROLES 
+==============================================================================================================================
+Setup IAM user¶
+In order to build clusters within AWS we'll create a dedicated IAM user for kops. This user requires API credentials in order to use kops. Create the user, and credentials, using the AWS console'.
+
+The kops user will require the following IAM permissions to function properly:
+
+AmazonEC2FullAccess
+AmazonRoute53FullAccess
+AmazonS3FullAccess
+IAMFullAccess
+AmazonVPCFullAccess
+AmazonSQSFullAccess
+AmazonEventBridgeFullAccess''
+
+#You can create the kOps IAM user from the command line using the following:
+
+#To create IAM Group
+$ aws iam create-group --group-name kops
+
+#To attach IAM polies to IAM Group
+$ aws iam attach-group-policy --policy-arn arn:aws:iam::aws:policy/AmazonEC2FullAccess --group-name kops
+$ aws iam attach-group-policy --policy-arn arn:aws:iam::aws:policy/AmazonRoute53FullAccess --group-name kops
+$ aws iam attach-group-policy --policy-arn arn:aws:iam::aws:policy/AmazonS3FullAccess --group-name kops
+$ aws iam attach-group-policy --policy-arn arn:aws:iam::aws:policy/IAMFullAccess --group-name kops
+$ aws iam attach-group-policy --policy-arn arn:aws:iam::aws:policy/AmazonVPCFullAccess --group-name kops
+$ aws iam attach-group-policy --policy-arn arn:aws:iam::aws:policy/AmazonSQSFullAccess --group-name kops
+$ aws iam attach-group-policy --policy-arn arn:aws:iam::aws:policy/AmazonEventBridgeFullAccess --group-name kops
+
+#To create IAM User
+$ aws iam create-user --user-name kops
+
+#To add IAM user to IAM Group
+$ aws iam add-user-to-group --user-name kops --group-name kops
+
+#Create IAM Access key
+$ aws iam create-access-key --user-name kops
+
+You should record the SecretAccessKey and AccessKeyID in the returned JSON output, and then use them below:
+{
+    "AccessKey": {
+        "UserName": "kops",
+        "AccessKeyId": "AKIAW63OZZ56RYUVDE6A",
+        "Status": "Active",
+        "SecretAccessKey": "qgm0At1RSMAQ/rJ6v+SmHsoAEpZuPme4W6wh2g32",
+        "CreateDate": "2023-06-06T16:05:20+00:00"
+    }
+}
+
+
+# configure the aws client to use your new IAM user
+aws configure           # Use your new access key and secret key here
+aws iam list-users      # you should see a list of all your IAM users here
+
+# Because "aws configure" doesn't export these vars for kops to use, we export them now
+export AWS_ACCESS_KEY_ID=$(aws configure get aws_access_key_id)
+export AWS_SECRET_ACCESS_KEY=$(aws configure get aws_secret_access_key)
+
+#Step3: Configure DNS
+====================================================================================================================================
+In order to build a Kubernetes cluster with kops, we need to prepare somewhere to build the required DNS records. There are three scenarios below and you should choose the one that most closely matches your AWS situation.
+
+Note: if you want to use gossip-based DNS, you can skip this section.
+
+#Scenario 1a: A Domain purchased/hosted via AWS
+If you bought your domain with AWS, then you should already have a hosted zone in Route53. If you plan to use this domain then no more work is needed.
+In this example you own ramaws.com and your records for Kubernetes would look like etcd-us-east-1c.internal.clustername.ramaws.com
+
+#Scenario 1b: A subdomain under a domain purchased/hosted via AWS¶
+In this scenario you want to contain all kubernetes records under a subdomain of a domain you host in Route53. This requires creating a second hosted zone in route53, and then setting up route delegation to the new zone.
+
+In this example you own ramaws.com and your records for Kubernetes would look like etcd-us-east-1c.internal.clustername.subdomain.ramaws.com
+
+This is copying the NS servers of your SUBDOMAIN up to the PARENT domain in Route53. To do this you should:
+
+Create the subdomain, and note your SUBDOMAIN name servers (If you have already done this you can also get the values)
+
+# Note: This example assumes you have jq installed locally.
+$ ID=$(uuidgen) && aws route53 create-hosted-zone --name subdomain.ramaws-1256.com --caller-reference $ID | \
+    jq .DelegationSet.NameServers
+#output:
+[
+  "ns-545.awsdns-04.net",
+  "ns-1815.awsdns-34.co.uk",
+  "ns-406.awsdns-50.com",
+  "ns-1417.awsdns-49.org"
+]
+
+Note your PARENT hosted zone id
+
+# Note: This example assumes you have jq installed locally.
+$ aws route53 list-hosted-zones | jq '.HostedZones[] | select(.Name=="ramaws.com.") | .Id'
+Create a new JSON file with your values (subdomain.json)
+Note: The NS values here are for the SUBDOMAIN
+
+{
+  "Comment": "Create a subdomain NS record in the parent domain",
+  "Changes": [
+    {
+      "Action": "CREATE",
+      "ResourceRecordSet": {
+        "Name": "subdomain.ramaws.com",
+        "Type": "NS",
+        "TTL": 300,
+        "ResourceRecords": [
+          {
+            "Value": "ns-1.<example-aws-dns>-1.co.uk"
+          },
+          {
+            "Value": "ns-2.<example-aws-dns>-2.org"
+          },
+          {
+            "Value": "ns-3.<example-aws-dns>-3.com"
+          },
+          {
+            "Value": "ns-4.<example-aws-dns>-4.net"
+          }
+        ]
+      }
+    }
+  ]
+}
+Ex:
+{
+  "Comment": "Create a subdomain NS record in the parent domain",
+  "Changes": [
+    {
+      "Action": "CREATE",
+      "ResourceRecordSet": {
+        "Name": "subdomain.ramaws-1256.com",
+        "Type": "NS",
+        "TTL": 300,
+        "ResourceRecords": [
+          {
+            "Value": "ns-545.awsdns-04.net"
+          },
+          {
+            "Value": "ns-1815.awsdns-34.co.uk"
+          },
+          {
+            "Value": "ns-406.awsdns-50.com"
+          },
+          {
+            "Value": "ns-1417.awsdns-49.org"
+          }
+        ]
+      }
+    }
+  ]
+}
+Apply the SUBDOMAIN NS records to the PARENT hosted zone.
+
+$ aws route53 change-resource-record-sets \
+ --hosted-zone-id <parent-zone-id> \
+ --change-batch file://subdomain.json
+ 
+$ aws route53 change-resource-record-sets \
+ --hosted-zone-id Z01626142XQKNWE4R55UK \
+ --change-batch file://subdomain.json 
+ 
+Now traffic to *.subdomain.ramaws.com will be routed to the correct subdomain hosted zone in Route53.
+
+#Testing your DNS setup¶
+---------------------------------------------------------------------------------------------------
+This section is not required if a gossip-based cluster is created.
+
+You should now be able to dig your domain (or subdomain) and see the AWS Name Servers on the other end.
+
+$ dig ns subdomain.ramaws-1256.com
+Should return something similar to:
+
+;; ANSWER SECTION:
+subdomain.example.com.        172800  IN  NS  ns-1.<example-aws-dns>-1.net.
+subdomain.example.com.        172800  IN  NS  ns-2.<example-aws-dns>-2.org.
+subdomain.example.com.        172800  IN  NS  ns-3.<example-aws-dns>-3.com.
+subdomain.example.com.        172800  IN  NS  ns-4.<example-aws-dns>-4.co.uk.
+This is a critical component when setting up clusters. If you are experiencing problems with the Kubernetes API not coming up, chances are something is wrong with the clusters DNS.
+
+Please DO NOT MOVE ON until you have validated your NS records! This is not required if a gossip-based cluster is created.
+
+#Cluster State storage¶
+In order to store the state of your cluster, and the representation of your cluster, we need to create a dedicated S3 bucket for kops to use. This bucket will become the source of truth for our cluster configuration
+
+We recommend keeping the creation of this bucket confined to us-east-1, otherwise more work will be required.
+$ aws s3api create-bucket \
+    --bucket prefix-example-com-state-store \
+    --region us-east-1
+Note: S3 requires --create-bucket-configuration LocationConstraint=<region> for regions other than us-east-1.
+
+Note: We STRONGLY recommend versioning your S3 bucket in case you ever need to revert or recover a previous state store.
+
+$ aws s3api put-bucket-versioning --bucket prefix-example-com-state-store  --versioning-configuration Status=Enabled
+
+In order for ServiceAccounts to use external permissions (aka IAM Roles for ServiceAccounts), you also need a bucket for hosting the OIDC documents. While you can reuse the bucket above if you grant it a public ACL, we do recommend a separate bucket for these files.
+
+The ACL must be public so that the AWS STS service can access them.
+
+$ aws s3api create-bucket \
+    --bucket prefix-example-com-oidc-store \
+    --region us-east-1 \
+    --acl public-read
+Information regarding cluster state store location must be set when using kops cli. See state store for further information.
+
+#Using S3 default bucket encryption
+kops supports default bucket encryption to encrypt its state in an S3 bucket. This way, the default server side encryption set for your bucket will be used for the kOps state too. You may want to use this AWS feature, e.g., for easily encrypting every written object by default or when you need to use specific encryption keys (KMS, CMK) for compliance reasons.
+
+If your S3 bucket has a default encryption set up, kOps will use it:
+
+$ aws s3api put-bucket-encryption --bucket prefix-example-com-state-store --server-side-encryption-configuration '{"Rules":[{"ApplyServerSideEncryptionByDefault":{"SSEAlgorithm":"AES256"}}]}'
+
+If the default encryption is not set or it cannot be checked, kOps will resort to using server-side AES256 bucket encryption with Amazon S3-Managed Encryption Keys (SSE-S3).
+
+#Sharing an S3 bucket across multiple accounts¶
+It is possible to use a single S3 bucket for storing kOps state for clusters located in different accounts by using cross-account bucket policies.
+
+kOps will be able to use buckets configured with cross-account policies by default.
+
+In this case you may want to override the object ACLs which kOps places on the state files, as default AWS ACLs will make it possible for an account that has delegated access to write files that the bucket owner cannot read.
+
+To do this you should set the environment variable KOPS_STATE_S3_ACL to the preferred object ACL, for example: bucket-owner-full-control.
+
+For available canned ACLs please consult Amazon's S3 documentation.'
+
+
+
+#Step4: Creating your first cluster
+==================================================================================================================================================
+
+Prepare local environment¶
+We're ready to start creating our first cluster! Let's first set up a few environment variables to make the process easier.
+
+export NAME=myfirstcluster.ramaws-1256.com   #this going to be come cluster name 
+export KOPS_STATE_STORE=s3://prefix-example-kops    #bucket name
+
+For a gossip-based cluster, make sure the name ends with k8s.local. For example:
+export NAME=myfirstcluster.k8s.local
+export KOPS_STATE_STORE=s3://prefix-example-com-state-store
+
+#Create cluster configuration¶
+In this example we will be deploying our cluster to the us-west-2 region.
+$ aws ec2 describe-availability-zones --region us-west-2
+
+Below is create cluster command. We'll use the most basic example possible, with more verbose examples in high availability. The below command will generate a cluster configuration, but will not start building it. Make sure you have generated an SSH key pair before creating your cluster using ssh-keygen'.
+$ ssh-keygen  #custer automaticall uses keys
+Your identification has been saved in /root/.ssh/id_rsa
+Your public key has been saved in /root/.ssh/id_rsa.pub
+
+#First install kops
+Install Kops on EC2
+
+curl -LO https://github.com/kubernetes/kops/releases/download/$(curl -s https://api.github.com/repos/kubernetes/kops/releases/latest | grep tag_name | cut -d '"' -f 4)/kops-linux-amd64
+chmod +x kops-linux-amd64
+sudo mv kops-linux-amd64 /usr/local/bin/kops
+
+#Create the cluster now
+
+$ kops create cluster \
+    --name=${NAME} \
+    --cloud=aws \
+    --zones=us-west-2a \
+    --discovery-store=s3://prefix-example-kops/${NAME}/discovery
+
+All instances created by kops will be built within ASG (Auto Scaling Groups), which means each instance will be automatically monitored and rebuilt by AWS if it suffers any failure.
+
+#EDIT / Customize Cluster Configuration¶
+Now we have a cluster configuration, we can look at every aspect that defines our cluster by editing the description.
+
+$ kops edit cluster --name ${NAME}
+
+This opens your editor (as defined by $EDITOR) and allows you to edit the configuration. The configuration is loaded from the S3 bucket we created earlier, and automatically updated when we save and exit the editor.
+
+We'll leave everything set to the defaults for now, but the rest of kops documentation covers additional settings and configuration you can enable'.
+
+#Build the Cluster¶
+Now we take the final step of actually building the cluster. This'll take a while. Once it finishes you'll have to wait longer while the booted instances finish downloading Kubernetes components and reach a "ready" state.
+
+$ kops update cluster --name ${NAME} --yes --admin
+
+#Use the Cluster¶
+Remember when you installed kubectl earlier? The configuration for your cluster was automatically generated and written to ~/.kube/config for you!
+
+A simple Kubernetes API call can be used to check if the API is online and listening. Let's use kubectl to check the nodes'.
+
+$kubectl get nodes
+
+You will see a list of nodes that should match the --zones flag defined earlier. This is a great sign that your Kubernetes cluster is online and working.
+
+#Validate kops cluster
+$ kops validate cluster --wait 10m
+
+#You can look at all system components with the following command.
+$ kubectl -n kube-system get po #po only 
+
+#Delete the Cluster¶
+=====================================================================================================
+Running a Kubernetes cluster within AWS obviously costs money, and so you may want to delete your cluster if you are finished running experiments.
+
+You can preview all of the AWS resources that will be destroyed when the cluster is deleted by issuing the following command.
+
+$ kops delete cluster --name ${NAME}
+
+When you are sure you want to delete your cluster, issue the delete command with the --yes flag. Note that this command is very destructive, and will delete your cluster and everything contained within it!
+
+$ kops delete cluster --name ${NAME} --yes
+
+
+#### Deploying Nginx pods on Kubernetes
+1. Deploying Nginx Container
+    kubectl run sample-nginx --image=nginx --replicas=2 --port=80
+    kubectl get pods
+    kubectl get deployments
+
+2. Expose the deployment as service.
+   kubectl expose deployment sample-nginx --port=80 --type=LoadBalancer
+   kubectl get services -o wide
+
+
+#Add another worker nodes to cluster using kops
+
+  https://github.com/kubernetes/kops/blob/master/docs/terraform.md
+  
+  

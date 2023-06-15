@@ -1,0 +1,219 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: nginx-deployment
+spec:
+  selector:
+    matchLabels:
+      app: nginx
+  replicas: 2 # tells deployment to run 2 pods matching the template
+  template:
+    metadata:
+      labels:
+        app: nginx
+    spec:
+      containers:
+      - name: nginx
+        image: nginx:1.14.2
+        ports:
+        - containerPort: 80
+        
+        
+        
+#Create a file and paster the above content        
+#Run the above file using beloc command to become an deployment
+$kubectl apply -f <name-of-the-deployment-file>
+
+#Now expose after deployment for web access
+$kubectl expose deployment <name-of-the-deployment> --port=80 --type=LoadBalancer
+$kubectl expose deployment nginx-deployment --port=80 --type=LoadBalancer
+
+#k8s pods details structure
+$kubectl get pods
+READY   STATUS    RESTARTS   AGE
+nginx-deployment-7fb96c846b-9f9wd   1/1     Running   0          44m
+
+#Note: 
+Pods contains lables, namespace, container details[name,image, ports, protocol, volumes], status[Initialized, Ready, ContainersReady, PodScheduled],
+               container-statuses[containerID, image, name, state], hostIp, phase, podIps, startTime
+               
+root@cloudshell:~/k8s/configMaps (my-second-project-389507)$ kubectl get nginx-deployment-7fb96c846b-9f9wd -o json
+{
+    "apiVersion": "v1",
+    "kind": "Pod",
+    "metadata": {
+        "creationTimestamp": "2023-06-12T11:05:23Z",
+        "generateName": "nginx-deployment-7fb96c846b-",
+        "labels": {
+            "app": "nginx",
+            "pod-template-hash": "7fb96c846b"
+        },
+        "name": "nginx-deployment-7fb96c846b-9f9wd",
+        "namespace": "default",
+        "ownerReferences": [
+            {
+                "apiVersion": "apps/v1",
+                "blockOwnerDeletion": true,
+                "controller": true,
+                "kind": "ReplicaSet",
+                "name": "nginx-deployment-7fb96c846b",
+                "uid": "b67c2635-3b27-432f-976d-4b50ac732f8c"
+            }
+        ],
+        "resourceVersion": "937042",
+        "uid": "fa5db2b7-e5ca-4d88-97db-1979e25dcab0"
+    },
+    "spec": {
+        "containers": [
+            {
+                "image": "nginx:1.14.2",
+                "imagePullPolicy": "IfNotPresent",
+                "name": "nginx",
+                "ports": [
+                    {
+                        "containerPort": 80,
+                        "protocol": "TCP"
+                    }
+                ],
+                "resources": {},
+                "terminationMessagePath": "/dev/termination-log",
+                "terminationMessagePolicy": "File",
+                "volumeMounts": [
+                    {
+                        "mountPath": "/var/run/secrets/kubernetes.io/serviceaccount",
+                        "name": "kube-api-access-xvg2x",
+                        "readOnly": true
+                    }
+                ]
+            }
+        ],
+        "dnsPolicy": "ClusterFirst",
+        "enableServiceLinks": true,
+        "nodeName": "gke-demo-gke-default-pool-4a7a8575-1fj5",
+        "preemptionPolicy": "PreemptLowerPriority",
+        "priority": 0,
+        "restartPolicy": "Always",
+        "schedulerName": "default-scheduler",
+        "securityContext": {},
+        "serviceAccount": "default",
+        "serviceAccountName": "default",
+        "terminationGracePeriodSeconds": 30,
+        "tolerations": [
+            {
+                "effect": "NoExecute",
+                "key": "node.kubernetes.io/not-ready",
+                "operator": "Exists",
+                "tolerationSeconds": 300
+            },
+            {
+                "effect": "NoExecute",
+                "key": "node.kubernetes.io/unreachable",
+                "operator": "Exists",
+                "tolerationSeconds": 300
+            }
+        ],
+        "volumes": [
+            {
+                "name": "kube-api-access-xvg2x",
+                "projected": {
+                    "defaultMode": 420,
+                    "sources": [
+                        {
+                            "serviceAccountToken": {
+                                "expirationSeconds": 3607,
+                                "path": "token"
+                            }
+                        },
+                        {
+                            "configMap": {
+                                "items": [
+                                    {
+                                        "key": "ca.crt",
+                                        "path": "ca.crt"
+                                    }
+                                ],
+                                "name": "kube-root-ca.crt"
+                            }
+                        },
+                        {
+                            "downwardAPI": {
+                                "items": [
+                                    {
+                                        "fieldRef": {
+                                            "apiVersion": "v1",
+                                            "fieldPath": "metadata.namespace"
+                                        },
+                                        "path": "namespace"
+                                    }
+                                ]
+                            }
+                        }
+                    ]
+                }
+            }
+        ]
+    },
+    "status": {
+        "conditions": [
+            {
+                "lastProbeTime": null,
+                "lastTransitionTime": "2023-06-12T11:05:23Z",
+                "status": "True",
+                "type": "Initialized"
+            },
+            {
+                "lastProbeTime": null,
+                "lastTransitionTime": "2023-06-12T11:05:28Z",
+                "status": "True",
+                "type": "Ready"
+            },
+            {
+                "lastProbeTime": null,
+                "lastTransitionTime": "2023-06-12T11:05:28Z",
+                "status": "True",
+                "type": "ContainersReady"
+            },
+            {
+                "lastProbeTime": null,
+                "lastTransitionTime": "2023-06-12T11:05:23Z",
+                "status": "True",
+                "type": "PodScheduled"
+            }
+        ],
+        "containerStatuses": [
+            {
+                "containerID": "containerd://56a7c02727892f252ba6aee0c37a5ce5ef4e395426f43104e70c532985ed7988",
+                "image": "docker.io/library/nginx:1.14.2",
+                "imageID": "docker.io/library/nginx@sha256:f7988fb6c02e0ce69257d9bd9cf37ae20a60f1df7563c3a2a6abe24160306b8d",
+                "lastState": {},
+                "name": "nginx",
+                "ready": true,
+                "restartCount": 0,
+                "started": true,
+                "state": {
+                    "running": {
+                        "startedAt": "2023-06-12T11:05:27Z"
+                    }
+                }
+            }
+        ],
+        "hostIP": "10.0.1.12",
+        "phase": "Running",
+        "podIP": "172.16.2.4",
+        "podIPs": [
+            {
+                "ip": "172.16.2.4"
+            }
+        ],
+        "qosClass": "BestEffort",
+        "startTime": "2023-06-12T11:05:23Z"
+    }
+}
+
+#Configmap
+#list the configMaps
+$kubectl get configMaps
+
+#describe the configMap
+$kubectl get configmaps <name> -o yaml
+
