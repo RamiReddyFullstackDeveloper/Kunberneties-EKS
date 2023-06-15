@@ -1,0 +1,39 @@
+#Labels:
+Labels are key value pairs that are attached to the kubernetes object such as pods.
+Labels are intended to be used to identifying the attributes of objects that are meaning or relavent to users.
+For example, here's a manifest for a Pod that has two labels environment: production and app: nginx:'
+Labels must be specified under metadata only.
+
+apiVersion: v1
+kind: Pod
+metadata:
+  name: label-demo
+  labels:
+    environment: production
+    app: nginx
+spec:
+  containers:
+  - name: nginx
+    image: nginx:1.14.2
+    ports:
+    - containerPort: 80
+#list the all lables
+
+#list the pods 
+$kubectl get pods
+#list the pods with matching lables
+$kubectl get pods -l app=<label-name>
+#or when we want to display with multiple labels
+$kubectl get pods -l environment=production,tier=frontend
+#or using set based
+$kubectl get pods -l 'environment in (production),tier in (frontend)'
+
+#we can also delete list of pods by specifying labels
+$kubectl delete pod -l env=app
+
+#create label uisng command line tool
+$kubectl label pod <pod-name> <label-key>=<label-value>
+Ex: $kubectl label pod my-pod env=pod
+
+#we can also update the label name using below command.
+$kubectl label pod my-pod env=test --overwrite
