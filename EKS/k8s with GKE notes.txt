@@ -108,13 +108,6 @@ ERROR: (gcloud.container.clusters.create) ResponseError: code=400, message=Faile
 root@cloudshell:~ (my-second-project-389507)$ gcloud services enable container.googleapis.com
 Operation "operations/acf.p2-558172123189-8ac03dd0-d391-4363-b567-0972ee8f3699" finished successfully.
 
-Also, you check the google kubernetes engine dashboard to view all the details about the cluster.
-
-
-# you can get all the information about the  GKE cluster using the following command.
--------------------------------------------------------------------------------------
-$ gcloud container clusters describe  demo-gke --region=us-central1
-
 #Now, we need to download the cluster kubeconfig to our location workstation.
 ---------------------------------------------------------------------------
 The following command generates the kubeconfig and adds it to the ~/.kube/config file.	
@@ -126,11 +119,15 @@ Kubectl is a command-line utility for interacting with the kubernetes cluster. Y
 If you already have kubectl in your workstation, you can ignore this step.
 To install kubectl component, execute the following gcloud command
 
-$gcloud components install kubectl
+$ gcloud components install kubectl   or $sudo apt-get install kubectl
 
 Now, you can get your cluster information using the kubectl command using the following command.
 
 $kubectl cluster-info
+Kubernetes control plane is running at https://35.223.145.1
+GLBCDefaultBackend is running at https://35.223.145.1/api/v1/namespaces/kube-system/services/default-http-backend:http/proxy
+KubeDNS is running at https://35.223.145.1/api/v1/namespaces/kube-system/services/kube-dns:dns/proxy
+Metrics-server is running at https://35.223.145.1/api/v1/namespaces/kube-system/services/https:metrics-server:/proxy
 
 #Deploy Nginx on GKE for Validation
 ------------------------------------
@@ -271,7 +268,7 @@ A cluster consists of at least one cluster control plane machine and multiple wo
 
 Create an Autopilot cluster named hello-cluster:
 
-$gcloud container clusters create-auto hello-cluster \
+$ gcloud container clusters create-auto hello-cluster \
     --region=us-west1
 
 # To set the default maximum Pods per node using the gcloud CLI, run the following command:
@@ -299,6 +296,9 @@ After creating your cluster, you need to get authentication credentials to inter
 
 $ gcloud container clusters get-credentials hello-cluster \
     --region COMPUTE_REGION
+	
+gcloud container clusters get-credentials demo-gke \
+    --region us-central1
 	
 #Describe the cluster
 $ gcloud container clusters describe <cluster-name> --region=us-central1
@@ -374,4 +374,96 @@ Usage: gcloud container clusters create NAME [optional flags]
                          --autoprovisioning-standard-rollout-policy |
                          --autoscaling-profile | --binauthz-evaluation-mode |
                          --boot-disk-kms-key | --cloud-run-config |
-                         --cluster-dns | --cluster-dns-domain |
+                         --cluster-dns | --cluster-dns-domain
+						 
+		
+============================================================================================================================================================#Commands
+
+===========================================================================================================================================================	
+#View a list of every running and completed operation in the cluster:
+$gcloud container operations list
+#Kubernetes: deleting a GKE node from a managed instance node pool
+
+https://fabianlee.org/2022/03/08/kubernetes-deleting-a-gke-node-from-a-managed-instance-node-pool/#:~:text=If%20you%20need%20to%20delete,instance%20group%20for%20each%20region.
+
+https://monowar-mukul.medium.com/kubernetes-remove-worker-node-from-the-cluster-and-completely-uninstall-af41e00c1244
+
+https://stackoverflow.com/questions/35757620/how-to-gracefully-remove-a-node-from-kubernetes
+
+# get list of clusters
+$ gcloud container clusters list
+	root@cloudshell:~ (my-second-project-389507)$ gcloud container clusters list
+	NAME: demo-gke
+	LOCATION: us-central1
+	MASTER_VERSION: 1.25.8-gke.500
+	MASTER_IP: 35.223.145.1
+	MACHINE_TYPE: g1-small
+	NODE_VERSION: 1.25.8-gke.500
+	NUM_NODES: 3
+	STATUS: RUNNING
+
+
+# set variables for cluster
+cluster_name=cluster-2
+location_flag="--region=us-central1"
+
+# get managed instance groups for specific cluster
+$ gcloud container clusters describe $cluster_name $location_flag --format=json | jq '.instanceGroupUrls' | tr -d ' ",' | rev | cut -d/ -f1 | rev
+
+[
+gke-cluster-2-default-pool-484b01f9-grp
+gke-cluster-2-default-pool-ba82bf6c-grp
+gke-cluster-2-default-pool-168508f7-grp
+]
+But this leaves you with needing to determine which instance group your suspect node is a member of, and that can be done by querying the membership of each managed instance group.
+
+# extracts full instance group URI
+igs=$(gcloud container clusters describe $cluster_name $location_flag --format=json | jq '.instanceGroupUrls' | tr -d ' ",' | tail -n+2 | head -n-1)
+
+# list GKE nodes in each instance group
+for igline in $igs; do
+  the_zone=$(echo "$igline" | grep -Po "/zones/\K(.*?)(?=/)")
+  the_ig=${igline##*/}
+  echo "== $the_zone,$the_ig =="
+  gcloud compute instance-groups managed list-instances --zone=$the_zone $the_ig --format="value(instance)"
+done
+Which outputs each instance zone/group, and then its GKE node membership.
+
+== us-central1-b,gke-cluster-2-default-pool-484b01f9-grp ==
+gke-cluster-2-default-pool-484b01f9-4jdw
+== us-central1-a,gke-cluster-2-default-pool-ba82bf6c-grp ==
+gke-cluster-2-default-pool-ba82bf6c-r729
+== us-central1-f,gke-cluster-2-default-pool-168508f7-grp ==
+gke-cluster-2-default-pool-168508f7-8kj3
+Now armed with all the necessary pieces of information, you can delete the GKE node instance.
+
+gke_instance_group=gke-cluster-2-default-pool-168508f7-grp
+gke_vm_instance=gke-cluster-2-default-pool-168508f7-8kj3
+gke_vm_instance_zone=us-central1-f
+
+# delete node instance from managed instance group
+gcloud compute instance-groups managed delete-instances $gke_instance_group --instances=$gke_vm_instance --zone=gke_vm_instance_zone
+
+REFERENCES
+
+google documentation, gcloud compute instance-groups managed
+
+Petko’s coding blog, deleting a GKE node from instance group
+
+NOTES
+show zone info for each gke node
+
+# take note of region of your suspected blocker
+# show cluster gke nodes and their zone
+kubectl get nodes -o custom-columns='NAME:.metadata.name,ZONE:.metadata.labels.failure-domain\.beta\.kubernetes\.io/zone,VER:.status.nodeInfo.kubeletVersion'
+
+
+Also, you check the google kubernetes engine dashboard to view all the details about the cluster.
+
+#TO increase or decrease the number of nodes in gke using 
+$ gcloud container clusters resize CLUSTER_NAME --node-pool POOL_NAME   --num-nodes NUM_NODES
+$ gcloud container clusters resize demo-gke --node-pool POOL_NAME   --num-nodes 2
+
+# you can get all the information about the  GKE cluster using the following command.
+-------------------------------------------------------------------------------------
+$ gcloud container clusters describe  demo-gke --region=us-central1
