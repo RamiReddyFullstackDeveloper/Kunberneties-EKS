@@ -1,0 +1,15 @@
+Tasks :
+1. Launch a VM in AWS / GCP / Azure / Local
+2. Install git on the VM
+3. Create a GitHub Account in github.com
+4. Create a GitHub Repository with Public visibility called devopsclass
+5. Generate a PAT for your GitHub account
+6. Clone the devopsclass repository into your local system where git  is installed.
+7. Go to the devopsclass directory and give ls -a command to check the existence of .git diectory.
+8. So devopsclass directory is a local git repository now.
+9. Create 2 files - file1 and file2 using touch command.
+10. Stage these 2 files and then commit the changes with a commit message - Initial Commit
+11. Setup user's credentials using user.name and user.email parameters. Also check the key=value pairs in .gitconfig file
+12. Now push the committed files into the Upstream Repository
+13. Ensure that username and password are not prompted every-time you will give a push.
+14. Very the Upstream Repository in GitHub which should now contain 2 files. - file1 and file2
