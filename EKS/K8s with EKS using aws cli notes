@@ -1,0 +1,226 @@
+#!/bin/bash
+
+#Create cluster using AWS Console:
+https://katharharshal1.medium.com/deploying-a-kubernetes-cluster-with-amazon-eks-ae9f4ff18f77
+
+#First Create EKS cluster and Later Create Worker nodes and join them to EKS Cluster.
+
+#Step 0: Before you start
+=========================
+You will need to make sure you have the following components installed and set up before you start with Amazon EKS:
+
+AWS CLI – while you can use the AWS Console to create a cluster in EKS, the AWS CLI is easier. You will need version 1.16.73 at least. For further instructions, click here.
+
+Kubectl – used for communicating with the cluster API server. For further instructions on installing, click here. This endpoint is public by default, but is secured by proper configuration of a VPC (see below).
+
+AWS-IAM-Authenticator – to allow IAM authentication with the Kubernetes cluster. Check out the repo on GitHub for instructions on setting this up.
+
+#Install AWS CLI
+$curl "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o "awscliv2.zip"
+$unzip awscliv2.zip
+$sudo ./aws/install
+check AWS CLI Version
+$aws --version
+
+
+#Install or update kubectl on Linux operating systems.   
+$ curl -O https://s3.us-west-2.amazonaws.com/amazon-eks/1.27.1/2023-04-19/bin/linux/amd64/kubectl
+#Apply execute permissions to the binary.
+$ chmod +x ./kubectl
+#Copy the binary to a folder in your PATH. If you have already installed a version of kubectl, then we recommend creating a $HOME/bin/kubectl and ensuring that $HOME/bin comes first in your $PATH
+$ mkdir -p $HOME/bin && cp ./kubectl $HOME/bin/kubectl && export PATH=$HOME/bin:$PATH
+#(Optional) Add the $HOME/bin path to your shell initialization file so that it is configured when you open a shell.
+$ echo 'export PATH=$HOME/bin:$PATH' >> ~/.bashrc
+#After you install kubectl, you can verify its version.
+$ kubectl version --short --client
+
+
+#Step 1: Creating an EKS role
+=============================
+Open the IAM console, select ROLES on the left and then click the create role button at the top of the page.
+Select “AWS services” as the trusted entity and “EKS” as the service type as shown below.
+#Use cases for other AWS services: section
+Type EKS in drop down 
+Choose EKS -Cluster and click on permission, automatically “AmazonEKSClusterPolicy” is there for the role.
+Leave the selected policies as-is, and proceed to the Review page.
+Enter a name for the role (e.g. eksmasterrole) and hit the Create role button at the bottom of the page to create the IAM role.
+The IAM role is created.
+#Note:
+Be sure to note the Role ARN, you will need it when creating the Kubernetes cluster in the steps below.
+Amazon EKS also offers service account IAM roles, eliminating previous iterations’ requirement for extended worker node permissions.
+
+#Step2: 2. Create a VPC to deploy the cluster
+=============================================
+
+Create VPC with CIDR range is 172.16.0.0/12 or 192.168.0.0/16 or 10.0.0.0/8
+Create Subnets 
+
+#Step3: Generate Access key and Secret Key Id
+Go To IAM ---> Security Credentials --> Create Access key and download the .cvs file for remember.
+Now come to putty and enter below command and pass the accesskey and secret key that you have downloaded previously at the time of creation.
+$aws configure
+Access key Id :
+Secret Key Id:
+Region:
+
+
+#Step3. Create AWS EKS Cluster using AWS CLI
+==========================================
+As mentioned above, we will use the AWS CLI to create the Kubernetes cluster. To do this, use the following command:
+
+Go to AWS Console, Create EC2 machine and login to that machig using putty. and execue below commands in putty.
+
+$aws eks --region <region> create-cluster --name <clusterName> 
+--role-arn <EKS-role-ARN> --resources-vpc-config 
+subnetIds=<subnet-id-1>,<subnet-id-2>,<subnet-id-3>,securityGroupIds=
+<security-group-id>
+
+
+region — the region in which you wish to deploy the cluster.
+clusterName — a name for the EKS cluster you want to create.
+EKS-role-ARN — the ARN of the IAM role you created in the first step above.
+subnetIds — a comma-separated list of the SubnetIds values from the AWS CloudFormation output that you generated in the previous step.
+security-group-id — the SecurityGroups value from the AWS CloudFormation output that you generated in the previous step.
+This is an example of what this command will look like
+
+$aws eks --region ap-south-1 create-cluster --name demo-eks --role-arn arn:aws:iam::478584360829:role/eksmasterrole --kubernetes-network-config serviceIpv4Cidr=172.16.0.0/12 --resources-vpc-config subnetIds=subnet-0b1f555ee878af24c,subnet-03ad6ec78d9b58ac2,subnet-06f380b5c9235ecb1,securityGroupIds=sg-02d7c50840b904d6b:
+
+Note: subnets must be created  before run the above command.
+#Note: When we execute above command it will create only cluster not nodes.
+
+Now you will see an output in json format.
+
+It takes about 5 minutes before your cluster is created. You can ping the status of the command using this CLI command:
+
+$aws eks describe-cluster --region ap-south-1 --name demo-eks --query "cluster.status"
+#Output: ACTIVE
+
+Once the status changes to “ACTIVE”, we can proceed with updating our kubeconfig file with the information on the new cluster so kubectl can communicate with it.
+
+To do this, we will use the AWS CLI update-kubeconfig command (be sure to replace the region and cluster name to fit your configurations):
+
+$aws eks --region ap-south-1 update-kubeconfig --name demo-eks
+
+You should see the following output:
+
+Added new context arn:aws:eks:us-east-1:011173820421:cluster/demo to 
+/Users/Daniel/.kube/config
+
+We can now test our configurations using the kubectl get svc command:
+
+$kubectl get svc
+NAME         TYPE        CLUSTER-IP   EXTERNAL-IP   PORT(S)   AGE
+kubernetes   ClusterIP   172.16.0.1   <none>        443/TCP   45m
+
+#Step 4: Launching Kubernetes worker nodes
+==========================================
+Now that we’ve set up our cluster and VPC networking, we can now launch Kubernetes worker nodes. To do this, we will again use a CloudFormation template.
+
+Open CloudFormation, click Create Stack, and this time use the following template URL:
+
+https://amazon-eks.s3-us-west-2.amazonaws.com/cloudformation/2019-01-09/amazon-eks-nodegroup.yaml
+
+#Clicking Next, name your stack, and in the EKS Cluster section enter the following details:
+
+ClusterName – the name of your Kubernetes cluster (e.g. demo)
+ClusterControlPlaneSecurityGroup – the same security group you used for creating the cluster in previous step.
+NodeGroupName – a name for your node group.
+NodeAutoScalingGroupMinSize – leave as-is. The minimum number of nodes that your worker node Auto Scaling group can scale to.
+NodeAutoScalingGroupDesiredCapacity – leave as-is. The desired number of nodes to scale to when your stack is created.
+NodeAutoScalingGroupMaxSize – leave as-is. The maximum number of nodes that your worker node Auto Scaling group can scale out to.
+NodeInstanceType – leave as-is. The instance type used for the worker nodes.
+NodeImageId – the Amazon EKS worker node AMI ID for the region you’re using. For us-east-1, for example: ami-0c5b63ec54dd3fc38
+KeyName – the name of an Amazon EC2 SSH key pair for connecting with the worker nodes once they launch.
+BootstrapArguments – leave empty. This field can be used to pass optional arguments to the worker nodes bootstrap script.
+VpcId – enter the ID of the VPC you created in Step 2 above.
+Subnets – select the three subnets you created in Step 2 above.
+
+
+Proceed to the Review page, select the check-box at the bottom of the page acknowledging that the stack might create IAM resources, and click Create.
+
+CloudFormation creates the worker nodes with the VPC settings we entered — three new EC2 instances are created using the
+
+As before, once the stack is created, open Outputs tab:
+
+
+Note the value for NodeInstanceRole as you will need it for the next step — allowing the worker nodes to join our Kubernetes cluster.
+
+To do this, first download the AWS authenticator configuration map:
+
+curl -O https://amazon-eks.s3-us-west-2.amazonaws.com/cloudformation/2019-01-09/aws-auth-cm.yaml
+
+Open the file and replace the rolearn with the ARN of the NodeInstanceRole created above:
+root@master-node:~# ls -ltr
+root@master-node:~# vi aws-auth-cm.yaml
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: aws-auth
+  namespace: kube-system
+data:
+  mapRoles: |
+    - rolearn: <ARN of instance role (not instance profile)>
+      username: system:node:{{EC2PrivateDNSName}}
+      groups:
+        - system:bootstrappers
+        - system:nodes
+		  
+Save the file and apply the configuration 
+
+kubectl apply -f aws-auth-cm.yaml :
+
+You should see the following output
+
+configmap/aws-auth created
+
+Use kubectl to check on the status of your worker nodes 
+
+kubectl get nodes --watch :
+
+NAME                              STATUS     ROLES     AGE         VERSION
+ip-192-168-245-194.ec2.internal   Ready     <none>    <invalid>     v1.11.5
+ip-192-168-99-231.ec2.internal    Ready     <none>    <invalid>     v1.11.5
+ip-192-168-140-20.ec2.internal    Ready     <none>    <invalid>     v1.11.5
+
+
+#Step 5: Installing a demo app on Kubernetes
+=======================================================================
+Congrats! Your Kubernetes cluster is created and set up. To take her for a spin, we’re going to deploy a simple Guestbook app written in PHP and using Redis for storing guest entries.
+
+#Deploying Nginx Container:
+$ kubectl create deployment  demo-nginx --image=nginx --replicas=2 --port=80 #here replicas represent no of pods need to be run
+
+$kubectl get deployment
+[root@k8s-mgmt-svr ~]# kubectl get deployment
+NAME         READY   UP-TO-DATE   AVAILABLE   AGE
+demo-nginx   2/2     2            2           22m
+
+#Expose the deployment as service. This will create an ELB in front of those 2 containers and allow us to publicly access them.
+$ kubectl expose deployment demo-nginx --port=80 --type=LoadBalancer
+
+
+
+#Summing it up
+Kubernetes is THE container orchestration tool. There’s no argument there. But as already stated, it can be challenging, especially in large deployments and at a certain scale you might want to consider shifting some of the manual work to a managed solution.
+
+Quoting the Kubernetes documentation, “If you just want to “kick the tires” on Kubernetes, use the local Docker-based solutions. When you are ready to scale up to more machines and higher availability, a hosted solution is the easiest to create and maintain.”
+
+For those of you who are AWS power users, Amazon EKS is a natural fit. For those of you who are just migrating to the cloud or are deployed on a different cloud, Amazon EKS might seem a bit daunting to begin with.
+
+
+
+
+#Update cluster config uisng AWS CLI
+$aws eks update-cluster-config --name <cluster-name> --region <region-code> --minSize=2 --maxSize = 3
+
+
+
+
+
+
+
+
+
+
+
+
