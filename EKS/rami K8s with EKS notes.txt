@@ -34,13 +34,12 @@ check AWS CLI Version
 $aws --version
 
 
-#kubernates setup in EKS
+#kubernates Prerequisites Before Clsuter Creation
 ==============================================================================
 https://github.com/vikas99341/k8s-masterclass/blob/main/EKS/eksctl
 #Before starting this tutorial, you must install and configure the following tools and resources that you need to create and manage an Amazon EKS cluster.
 kubectl and eksctl both must be required.
 #kubectl : Refer official website https://docs.aws.amazon.com/eks/latest/userguide/install-kubectl.html
-=================================
 #Determine whether you already have kubectl installed on your device.
 $ kubectl version --short --client
 #Install or update kubectl on Linux operating systems.   
@@ -55,7 +54,6 @@ $ echo 'export PATH=$HOME/bin:$PATH' >> ~/.bashrc
 $ kubectl version --short --client
 
 #eksctl : Refer official website 
-================================
 https://docs.aws.amazon.com/eks/latest/userguide/eksctl.html
 https://github.com/weaveworks/eksctl/blob/main/README.md#installation  # For eksctl installation
 
@@ -82,28 +80,58 @@ sudo mv /tmp/eksctl /usr/local/bin
    sudo mv /tmp/eksctl /usr/local/bin
    eksctl version```
 
-#Create IAM roles and attach to EC2 instance on which machine cluster runs
-============================================================================
+#Step1: Create IAM roles and attach to EC2 instance on which machine cluster runs
+=================================================================================
 `Note: create IAM user with programmatic access if your bootstrap system is outside of AWS`
 Refer https://eksctl.io/usage/minimum-iam-policies/
 
-First create Roles :
-IAMFULLAccess
-EC2FullAccess 
+AmazonEC2FullAccess
+AWSCloudFormationFullAccess 
+EksAllAccess
+IamLimitedAccess
+AmazonEKSClusterPolicy
+AmazonEKSServiceolicy
 CloudFormationFullAccess
-AmazonEKSClusterPolicy.
-AWSServiceRoleForAmazonEKS 
-AdministratorAccess
 
-and go go to EC2 instance and click on Actions --> Security ---> Modify IAM Role--> chose Role.
+#To create an Amazon EKS cluster
+If you already have a cluster IAM role, or youre going to create your cluster with eksctl, then you can skip this step. By default, eksctl creates a role for you.
 
-#Step1: Create your Amazon EKS cluster and nodes
-==========================================
-this topic includes steps to create a cluster and nodes with default settings. Before creating a cluster and nodes for production use, we recommend that you familiarize yourself with all settings and deploy a cluster and nodes with the settings that meet your requirements.
-#Cluster:
-========
-https://docs.aws.amazon.com/eks/latest/userguide/create-cluster.html
-#Nodes: ple refer this official website https://docs.aws.amazon.com/eks/latest/userguide/eks-compute.html
+To create an Amazon EKS cluster IAM role
+Run the following command to create an IAM trust policy JSON file.
+
+
+cat >eks-cluster-role-trust-policy.json << #EOF #reove # later while working
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Effect": "Allow",
+      "Principal": {
+        "Service": "eks.amazonaws.com"
+      },
+      "Action": "sts:AssumeRole"
+    }
+  ]
+}
+EOF
+
+Create the Amazon EKS cluster IAM role. If necessary, preface eks-cluster-role-trust-policy.json with the path on your computer that you wrote the file to in the previous step. The command associates the trust policy that you created in the previous step to the role. To create an IAM role, the IAM principal that is creating the role must be assigned the 
+iam:CreateRole action (permission).
+
+$aws iam create-role --role-name myAmazonEKSClusterRole --assume-role-policy-document file://"eks-cluster-role-trust-policy.json"
+Attach the Amazon EKS managed policy named AmazonEKSClusterPolicy to the role. To attach an IAM policy to an IAM principal, the principal that is attaching the policy must be assigned one of the following IAM actions (permissions): iam:AttachUserPolicy or iam:AttachRolePolicy.
+
+$aws iam attach-role-policy --policy-arn arn:aws:iam::aws:policy/AmazonEKSClusterPolicy --role-name myAmazonEKSClusterRole
+
+and go to EC2 instance and click on Actions --> Security ---> Modify IAM Role--> chose Role.
+
+#Step2: Create your Amazon EKS cluster
+======================================
+This topic includes steps to create a cluster and nodes with default settings. Before creating a cluster and nodes for production use, we recommend that you familiarize yourself with all settings and deploy a cluster and nodes with the settings that meet your requirements.
+
+#Cluster: https://docs.aws.amazon.com/eks/latest/userguide/create-cluster.html
+#Nodes: pls refer this official website https://docs.aws.amazon.com/eks/latest/userguide/eks-compute.html
+
 A Kubernetes node is a machine that runs containerized applications. Each node has the following components:
 Container runtime – Software that's responsible for running the containers'
 kubelet – Makes sure that containers are healthy and running within their associated Pod.
@@ -117,23 +145,177 @@ Select this type of node if you want to run Linux applications on AWS Fargate. F
 #Managed nodes – Linux :
 Select this type of node if you want to run Amazon Linux applications on Amazon EC2 instances. Though not covered in this guide, you can also add Windows self-managed and Bottlerocket nodes to your cluster.
 
-Create your Amazon EKS cluster with the following command. You can replace my-cluster with your own value.
+#Three ways to create cluster 
+1. Using EKSCTL Command Line Tool
+2> Using AES Console
+3> Using AWS CLI Command Line Tool https://logz.io/blog/amazon-eks-cluster/
+4> Using Manifest file #This is recommend way to create cluster in realtime, so that we can easily manage the our cluster by reducing number of nodes and etc.   https://eksctl.io/usage/creating-and-managing-clusters/
+
+#create Cluster using EKSCTL  Command Line Tool
+================================================
+
+#Create your Amazon EKS cluster with the following command. You can replace my-cluster with your own value.
 $eksctl create cluster --name my-cluster --region region-code --fargate
-$eksctl create cluster --name my-cluster --region ap-south-1 --fargate
- Ex:
-   $eksctl create cluster --name cluster-name  \
-   --region region-name \
-   --node-type instance-type \
+EX: $eksctl create cluster --name my-cluster --region ap-south-1 --fargate
+
+#When we create cluster using eksctl it will create below resources by default
+with one managed nodegroup containing two m5.large nodes.
+
+$eksctl create cluster --name my-cluster --region region-code --version 1.26 --vpc-private-subnets subnet-ExampleID1,subnet-ExampleID2 --without-nodegroup  --fargate
+
+Ex:
+   $eksctl create cluster --name demo-cluseter  \
+   --region ap-south-1 \
+   --node-type t2.medium \
    --nodes-min 2 \
    --nodes-max 2 \ 
-   --zones <AZ-1>,<AZ-2>
-   $eksctl create cluster --name demo-cluster --region us-east-1 --node-type t2.medium
-   $eksctl create cluster --name demo-cluster --region ap-south-1 --node-type t2.medium
+   --zones <AZ-1>,<AZ-2> 
+   
+
+Note: Once you have created a cluster, you will find that cluster credentials and about the cluster information in this location ~/.kube/config
+$ cat ~/.kube/config 
+
+Note:
+eksctl created a kubectl config file in ~/.kube or added the new clusters configuration within an existing config file in ~/.kube on your computer. 
+
+
+
+#Enable kubectl to communicate with your cluster by adding a new context to the kubectl config file.
+$aws eks update-kubeconfig --region region-code --name my-cluster
+-------------------------------------------------------------------------------------
+
+#using Manifest file : Recommended Approach to create custer in production env in real time
+===========================================================================================
+Refer this url https://eksctl.io/usage/eks-managed-nodes/ for complete understand
+               https://github.com/weaveworks/eksctl/blob/main/examples/15-managed-nodes.yaml
+               
+Step1: Create an directory
+Step2: Crerate an file named with cluster.yaml
+Step3: add the custer configuration in cluster.yaml
+cluster.yaml
+------------
+apiVersion: eksctl.io/v1alpha5
+kind: ClusterConfig
+metadata:
+  name: cluster-in-existing-vpc
+  region: eu-north-1
+  version: "1.24"  
+vpc:
+  subnets:
+    private:
+      eu-north-1a: { id: subnet-0ff156e0c4a6d300c }
+      eu-north-1b: { id: subnet-0549cdab573695c03 }
+      eu-north-1c: { id: subnet-0426fb4a607393184 }
+availabilityZones: ["us-east-2b", "us-east-2c"]
+managedNodeGroups:
+  - name: ng-1-workers
+    labels: { role: workers }
+    ami: ami-0e124de4755b2734d
+    instanceType: t2.medium
+    availabilityZones: ["us-east-2b"]   
+    desiredCapacity: 10
+    minSize: 2
+    maxSize: 4
+    volumeSize: 20
+    volumeName: /dev/xvda
+    volumeEncrypted: true
+    privateNetworking: true
+    securityGroups:
+      attachIDs: ["sg-1234"]
+    maxPodsPerNode: 80
+    ssh:
+      allow: true
+      publicKeyPath: ~/.ssh/ec2_id_rsa.pub
+      # new feature for restricting SSH access to certain AWS security group IDs
+      sourceSecurityGroupIds: ["sg-00241fbb12c607007"]
+    tags:
+      nodegroup-role: worker
+    iam:
+      withAddonPolicies:
+        imageBuilder: true
+        externalDNS: true
+        certManager: true
+ 
+  - name: ng-2-builders
+    labels: { role: builders }
+    instanceType: m5.2xlarge
+    desiredCapacity: 2
+    privateNetworking: true
+    minSize: 2
+    maxSize: 4
+
+ 
+Step4: run the yaml file to create cluster
+$eksctl create cluster -f cluster.yaml :
+#To delete this cluster, run:
+eksctl delete cluster -f cluster.yaml :
+
+When deleting a cluster with nodegroups, in some scenarios, Pod Disruption Budget (PDB) policies can prevent nodes from being removed successfully from nodepools. E.g. a cluster with aws-ebs-csi-driver installed, by default, spins off two pods while having a PDB policy that allows at most one pod to be unavailable at a time. This will make the other pod unevictable during deletion. To successfully delete the cluster, one should use disable-nodegroup-eviction flag. This will bypass checking PDB policies.
+
+eksctl delete cluster -f cluster.yaml --disable-nodegroup-eviction :
+
+#Scaling Managed Nodegroups¶
+eksctl scale nodegroup also supports managed nodegroups. The syntax for scaling a managed or unmanaged nodegroup is the same.
+$eksctl scale nodegroup --name=managed-ng-1 --cluster=managed-cluster --nodes=4 --nodes-min=3 --nodes-max=5 :
+
+If the managed nodes are deployed using custom AMIs, the following workflow must be followed in order to deploy a new version of the custom AMI.
+
+initial deployment of the nodegroup must be done using a launch template. e.g.
+
+managedNodeGroups:
+  - name: launch-template-ng
+    launchTemplate:
+      id: lt-1234
+      version: "2" #optional (uses the default version of the launch template if unspecified)
+create a new version of the custom AMI (using AWS EKS console).
+create a new launch template version with the new AMI ID (using AWS EKS console).
+
+upgrade the nodes to the new version of the launch template. e.g.
+$eksctl upgrade nodegroup --name nodegroup-name --cluster cluster-name --launch-template-version new-template-version :
+
+To upgrade a managed nodegroup to the latest AMI release version
+$eksctl upgrade nodegroup --name=managed-ng-1 --cluster=managed-cluster:
+
+If a nodegroup is on Kubernetes 1.14, and the cluster's Kubernetes version is 1.15, the nodegroup can be upgraded to the latest AMI release for Kubernetes 1.15 using:
+$eksctl upgrade nodegroup --name=managed-ng-1 --cluster=managed-cluster --kubernetes-version=1.15:
+
+To upgrade to a specific AMI release version instead of the latest version, pass --release-version
+eksctl upgrade nodegroup --name=managed-ng-1 --cluster=managed-cluster --release-version=1.19.6-20210310 :
+
+
+#To delete a managed node group with eksctl
+Enter the following command. Replace every example value with your own values.
+
+$eksctl delete nodegroup  --cluster demo-cluster  --region ap-south-1 --name worker-ng :
+  
+#Supported IAM add-on policies¶
+Example of all supported add-on policies
+nodeGroups:
+  - name: ng-1
+    instanceType: m5.xlarge
+    desiredCapacity: 1
+    iam:
+      withAddonPolicies:
+        imageBuilder: true
+        autoScaler: true
+        externalDNS: true
+        certManager: true
+        appMesh: true
+        appMeshPreview: true
+        ebs: true
+        fsx: true
+        efs: true
+        awsLoadBalancerController: true
+        xRay: true
+        cloudWatch: true
+
+#Cluster Creation Output
+==========================================================================================================================
 #Output:
 [root@k8s-mgmt-svr ~]# eksctl create cluster --name demo-cluster --region ap-south-1 --node-type t2.medium
 2023-06-02 13:07:56 [ℹ]  eksctl version 0.143.0
 2023-06-02 13:07:56 [ℹ]  using region ap-south-1
-2023-06-02 13:07:56 [ℹ]  skipping ap-south-1c from selection because it doesn't support the following instance type(s): t2.medium
+2023-06-02 13:07:56 [ℹ]  skipping ap-south-1c from selection because it doesnt support the following instance type(s): t2.medium
 2023-06-02 13:07:56 [ℹ]  setting availability zones to [ap-south-1a ap-south-1b]
 2023-06-02 13:07:56 [ℹ]  subnets for ap-south-1a - public:192.168.0.0/19 private:192.168.64.0/19
 2023-06-02 13:07:56 [ℹ]  subnets for ap-south-1b - public:192.168.32.0/19 private:192.168.96.0/19
@@ -169,17 +351,17 @@ $eksctl create cluster --name my-cluster --region ap-south-1 --fargate
 2023-06-02 13:23:07 [ℹ]  node "ip-192-168-62-169.ap-south-1.compute.internal" is ready
 2023-06-02 13:23:09 [ℹ]  kubectl command should work with "/root/.kube/config", try 'kubectl get nodes'
 2023-06-02 13:23:09 [✔]  EKS cluster "demo-cluster" in "ap-south-1" region is ready
-[root@k8s-mgmt-svr ~]#'
 
    
 Note: Cluster creation takes several minutes. During creation you will see several lines of output. The last line of output is similar to the following example line.
 #Note:
-Once you have created a cluster, you will find that cluster credentials and about the cluster in this location ~/.kube/config
+Once you have created a cluster, you will find that cluster credentials and about the cluster information in this location ~/.kube/config
 $ cat ~/.kube/config 
 
 eksctl created a kubectl config file in ~/.kube or added the new cluster's configuration within an existing config file in ~/.kube on your computer.'
 
 After cluster creation is complete, view the AWS CloudFormation stack named demo-cluster-cluster in the AWS CloudFormation console at https://console.aws.amazon.com/cloudformation to see all of the resources that were created.
+
 
 #Step 2: View Kubernetes resources
 =================================================================
@@ -196,7 +378,7 @@ fargate-ip-192-0-2-1.region-code.compute.internal   Ready    <none>   7m30s   v1
 2> using ml file 
 
 #Approach1
-#create an pod in kubernets cluser using kubectl command?
+#create an POD in kubernets cluser using kubectl command?
 $ kubectl run nginx --image=nginx --restart=Never  # This will create a pod named nginx, running with the nginx image on Docker Hub. And by setting the flag --restart=Never we tell Kubernetes to create a single pod rather than a Deployment.
 
 #Approach2 using yml file
@@ -219,27 +401,60 @@ Step4: create an file and named to pod1.yaml file
 #Note: We can have N number of containers in pod.
 Step5: run the yml file using below command
 $kubectl create -f pod1.yaml
+$kubectl get pods -o wide 
+$kubectl exec -it pod/podname bin/bash # go inside the container
+$exit
+
+# Create the deployment
+# Deploying Nginx pods on Kubernetes
+====================================
+#Deploying Nginx Container:
+$ kubectl create deployment  demo-nginx --image=nginx --replicas=2 --port=80    #here replicas represent no of pods need to be run
+
+[root@k8s-mgmt-svr ~]# kubectl get deployment
+NAME         READY   UP-TO-DATE   AVAILABLE   AGE
+demo-nginx   2/2     2            2           22m
+
+#Expose the deployment as service. This will create an ELB in front of those 2 containers and allow us to publicly access them.
+$ kubectl expose deployment demo-nginx --port=80 --type=LoadBalancer
+
+[root@k8s-mgmt-svr ~]# kubectl get svc demo-nginx          # this commands will give you external ip address.
+NAME         TYPE           CLUSTER-IP       EXTERNAL-IP                                                                PORT(S)        AGE
+demo-nginx   LoadBalancer   10.100.143.146   a8f787949ee6f4f0e8cddfcf68db9d2d-1322773865.ap-south-1.elb.amazonaws.com   80:30724/TCP   31m
+
+# Now copy the above external-ip and go to browser and hit with this url then u will see the nginx default index.html page content
+a8f787949ee6f4f0e8cddfcf68db9d2d-1322773865.ap-south-1.elb.amazonaws.com
+
+#Scale the pods
+[root@master-node ~]# kubectl scale --replicas=3 deployment/demo-nginx-deploy
+deployment.apps/demo-nginx-deploy scaled
+
 
 #Note: We can not control the pod that will create in which node. it get create based on the scheduler algorithm by default.
 #we can control the pod that need to be create in specific nodes using node affective
 When we run the  above pod creation command then kubernets automatically generates yml file, if we wanna see the full yml file issue the following commmad
 $kubectl get pod/nameofthepod yml | less
 
+#List the pods
 #View the workloads running on your cluster or 
 #to know the pods on which worker node running
 $kubectl get pods -A -o wide
-
 #for example output is as follows
 NAMESPACE     NAME                       READY   STATUS    RESTARTS   AGE   IP          NODE                                                NOMINATED NODE   READINESS GATES
 kube-system   coredns-1234567890-abcde   1/1     Running   0          18m   192.0.2.0   fargate-ip-192-0-2-0.region-code.compute.internal   <none>           <none>
 kube-system   coredns-1234567890-12345   1/1     Running   0          18m   192.0.2.1   fargate-ip-192-0-2-1.region-code.compute.internal   <none>           <none>
 
-#List the pods
-$kubectl get pods
+#List the nodes
+$ kubectl get nodes -o wide
+[root@master-node ~]# kubectl get nodes -o wide
+NAME                                            STATUS   ROLES    AGE     VERSION                INTERNAL-IP      EXTERNAL-IP     OS-IMAGE         KERNEL-VERSION                  CONTAINER-RUNTIME
+ip-192-168-55-60.ap-south-1.compute.internal    Ready    <none>   3h32m   v1.24.13-eks-0a21954   192.168.55.60    13.235.71.32    Amazon Linux 2   5.10.179-166.674.amzn2.x86_64   containerd://1.6.19
+ip-192-168-84-214.ap-south-1.compute.internal   Ready    <none>   3h31m   v1.24.13-eks-0a21954   192.168.84.214   15.207.106.69   Amazon Linux 2   5.10.179-166.674.amzn2.x86_64   containerd://1.6.19
 
-#Describe the pods
-$kubectl describe pod <name of the pod>  or $kubectl describe pod/<name-of-the-pod>
-$kubectl describe pod coredns-1234567890-abcde
+#Describe the pods | view the pods
+#Describe the nodes | view the nodes
+$kubectl describe pod <name of the pod>  
+$kubectl describe node <node-name>
 
 #to delete the pod
 $kubectl delete name-of-the-pod
@@ -247,24 +462,14 @@ $kubectl delete name-of-the-pod
 #To delete the EKS cluster
 $ eksctl delete cluster demo-cluster --region ap-south-1
 
-# Deploying Nginx pods on Kubernetes
-====================================
-#Deploying Nginx Container:
-$ kubectl create deployment  demo-nginx --image=nginx --replicas=2 --port=80    #here replicas represent no of pods need to be run
-
-$kubectl get deployment
-[root@k8s-mgmt-svr ~]# kubectl get deployment
-NAME         READY   UP-TO-DATE   AVAILABLE   AGE
-demo-nginx   2/2     2            2           22m
-
-$ kubectl get all
 [root@k8s-mgmt-svr .kube]# kubectl get all
 NAME                 TYPE        CLUSTER-IP   EXTERNAL-IP   PORT(S)   AGE
 service/kubernetes   ClusterIP   10.100.0.1   <none>        443/TCP   45m
 
-#Add another worker nodes to cluster using eksctl
-Firtst run the below command in master node and it givee you the join command that command run on the worker nodes.
-$kubectl 
+
+#how to edit the resource | how to edit the pods
+$kubectl edit pod/name-of-the-pod
+
 
 #Add another worker nodes to cluster using kubeadm
 Still on the existing master node, print the join command
@@ -274,29 +479,57 @@ kubeadm join k8s-endpoint:6443 --token 4iegnp.x2tfqdd9gl93zz1o --discovery-token
 worker-node1> $ kubeadm join k8s-endpoint:6443 --token 4iegnp.x2tfqdd9gl93zz1o --discovery-token-ca-cert-hash sha256:
 
 #Change the master-node ip address
-$kubectl -n kube-system edit svc fci-proxy-router
+$kubectl -n kube-system edit svc fci-proxy-router or $ kubectl config view
 Go to the first occurrence of two sections that list externalIPs. For example, suppose that 172.16.241.36 was entered for both the manager.ip and the manager.external_ip options:
 externalIPs:
 - 172.16.241.36
 - 172.16.241.36
 
-#Expose the deployment as service. This will create an ELB in front of those 2 containers and allow us to publicly access them.
-$ kubectl expose deployment demo-nginx --port=80 --type=LoadBalancer
+#how to view the cluster ip or deployment ip address
+$ kubectl describe service demo-nginx-deploy
+[root@master-node ~]# kubectl describe service demo-nginx-deploy
+Name:                     demo-nginx-deploy
+Namespace:                default
+Labels:                   app=demo-nginx-deploy
+Annotations:              <none>
+Selector:                 app=demo-nginx-deploy
+Type:                     LoadBalancer
+IP Family Policy:         SingleStack
+IP Families:              IPv4
+IP:                       10.100.183.64
+IPs:                      10.100.183.64
+LoadBalancer Ingress:     af4afc6f4d09a4606a8e99df54150a93-566678924.ap-south-1.elb.amazonaws.com
+Port:                     <unset>  80/TCP
+TargetPort:               80/TCP
+NodePort:                 <unset>  30877/TCP
+Endpoints:                192.168.52.99:80,192.168.63.2:80,192.168.76.35:80 + 2 more...
+Session Affinity:         None
+External Traffic Policy:  Cluster
+Events:
+  Type    Reason                Age    From                Message
+  ----    ------                ----   ----                -------
+  Normal  EnsuringLoadBalancer  7m25s  service-controller  Ensuring load balancer
+  Normal  EnsuredLoadBalancer   7m23s  service-controller  Ensured load balancer
 
-$ kubectl get svc demo-nginx # this commands will give you the url to access remotely.
-[root@k8s-mgmt-svr ~]# kubectl get svc demo-nginx
-NAME         TYPE           CLUSTER-IP       EXTERNAL-IP                                                                PORT(S)        AGE
-demo-nginx   LoadBalancer   10.100.143.146   a8f787949ee6f4f0e8cddfcf68db9d2d-1322773865.ap-south-1.elb.amazonaws.com   80:30724/TCP   31m
 
-# go to browser and hit with this url then u will see the nginx default index.html page content
-a8f787949ee6f4f0e8cddfcf68db9d2d-1322773865.ap-south-1.elb.amazonaws.com
+#To list the pods
+$kubectl get pods
+NAME                                READY   STATUS    RESTARTS   AGE
+demo-nginx-deploy-b7758cc8c-4tjp7   1/1     Running   0          60m   #this is the cluster-name
 
+#To list nodegroup
+$eksctl get nodegroup --cluster=<clusterName>
+$eksctl get nodegroup --cluster=demo-cluster #not working
+
+#To delete a managed node group with eksctl
+Enter the following command. Replace every example value with your own values.
+
+$eksctl delete nodegroup \
+  --cluster demo-cluster \
+  --region ap-south-1 \
+  --name worker-ng
+  
+  
 #What is the kubelet in kubernets?
-kubelet is the primary "node agent" that runs on each node. It can register the nore with api server using one of it one of the hostname.
+kubelet is the primary "node agent" that runs on each node. It can register the node with api server using one of it one of the hostname.
 The kubelet works in terms of a PodSpec. A PodSpec is a YAML or JSON object that describes a pod.
-	
-1> Where were you run the eksctl cluster commmand
-2> what is different between kubectl and eksctl
-3> Which parameter is should use to scale up and scale down? CPU Utalization by default > 70 %
-
-4> u said u will teach about service for expose service
