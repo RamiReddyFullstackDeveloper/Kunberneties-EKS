@@ -1,0 +1,154 @@
+#!/bin/bash
+
+#k8s with Services
+
+
+#Service: Services
+===========================================================================================================================================================
+Service provides single constant entry point to the pods from the external application.
+Labels are play key role in service: which determines which pods belong to ther service. similary nodes, pods and deployment as well.
+
+There are two approached to expose the serice 
+1> Through command line tool using $kubectl expose command
+2> Throgh the manifest file 
+
+#Approach1:
+# Create a service for a replicaset , which serves on port 80 and connects to the containers on port 8000
+#First ReplicaSet must be create and pods should run the use the below cmd to expose rs as service.
+$ kubectl expose rs <replicaset-name> --port=80 --target-port=8000 : #
+Note: In above  Query we did not specify the any type of service, so it will create service with default type of cluster ip. so that we can not access pod from out side the world.
+
+Note@: If we want to access from outside wold then use service type either NodePort or LoadBalancer or Ingres:
+
+NodePort:  Explined below.
+
+LoadBalancer: 
+
+Note: When you deploy a pod(using both cases kubectl create deploy and manifest file case) without exposing at first time, then later you would like to expose the service using CMD then use the below command.
+$ kubectl expose deployment <deployment-name> --port=80 --type=LoadBalancer:
+
+#Approah2 : using manifest file and attach to label: labels determines which pods belong to service.
+First create an pod pod1.yaml
+-----------------------------
+
+apiVersion: v1
+kind: Pod
+metadata:
+  name: label-demo
+  labels:
+    environment: production  #here environment and app are slecotors
+    app: nginx-dev
+spec:
+  containers:
+  - name: nginx
+    image: nginx:1.14.2
+    ports:
+    - containerPort: 80
+
+vim svc1.yaml
+------------     
+apiVersion: v1
+kind: Service
+metadata:
+   name: nginx-service
+spec:
+   type: LoadBalancer  #if we not specify type, then by deault type is cluster ip, that we can not access from outside the wld
+   ports:
+    -port: 80          # The port this nginx-service will be available on.
+	 targetPort: 8080  # The port is container port the service will forward to  (in the pod we have tag called containerPort)
+   selector: 
+     app: nginx-dev       # All pods with lbel app = nginx  will be part of this service. (here ky value should be same as pod label key and value)
+
+#Create a service     
+$kubectl apply -f 	svc1.yaml
+Note: When we deploy the the pod (using both kubectl run and maniest file) without exposing the service, then later you would like to expose the service usingmanifest file by specifyng the label then follow the above.(pod labels and service selector  must be match (including both key and value))
+
+#describe service 
+$kubectl describe svc/<name> :
+Note:when you run the above cmd and you will see Endpoints, if endpoint contain None, that means this service is not assigned with any pod or pods are not running yet, If service endpoints contains value with ip Address that means the pod is running  and the service is part of that pod.
+Service Endpoints Ip is pod ip addresses.
+Each pod contain an single unique ip address and using this pod ip address we can not commmunicate the pod from external world.
+Servicec Ip is contain ip address of cluster ip using this ip address we can communicate with pod from external world.
+Here service routing the trafic to endpoint the endpint is associated with pod ip so that from external we can communicate the pod.
+
+#Edit service
+$kubectl edit svc/<svc-name> :
+
+#Delete service
+$kubectl delete svc/<svc-name> :
+
+# how to know the what are the ports are opend in our machine
+$netstat -tlpn : #netstat is availble only in linux, but not in ubuntu, so use $ss -tlpn #ss will work on both OS.
+
+#Few ways to make a service accessible externally.
+1> using Nodeport:
+2> LoadBalancer
+3> Ingress
+
+# Using NodePort: nodeport range by default 30000 to 32768
+=============================================================================================================================
+vim svc1.yaml
+------------
+apiVersion: v1
+kind: Service
+metadata:
+   name: nginx-service
+spec:
+   type: NodePort     #if your not specifying any tpe by default is ClusterIP which will  be not accessable from the external world.
+   ports:
+    -port: 80          # The port this nginx-service will be available on.
+	 targetPort: 8080  # The port is container port the service will forward to  (in the pod we have tag called containerPort)
+	 nodePort: 30123   #the service will be accessable through port 30123  of each of the cluster.
+   selector: 
+     app: nginx-dev       # All pods with lbel app = nginx  will be part of this service. (here ky value should be same as pod label key and value)
+
+$kubectl apply -f svc1.yaml :
+
+In the above service we are using nodePort, when we aun the above service by using  above kubectl commmand it get opened ports on each node(number o nodes are associated with pods).
+Now copy the worker node ip address from the node machine and node port number from serive and go to browser and paste it and enter it you will be able communicate with pods from external world.
+http://<nod-ip-address>:<node-port>
+Example: http://192.168.10.111:30123
+
+Drawback: This case assume that if we have 3 nodes and are we going to give three urls to end user ? no its not good idea. In production environment we will create a Load balancer.
+Above example looks like below
+External Client --> Nodes ---> Service --> PODS
+
+#Exposing service exernally through LoadBalancer
+#Load Balancer
+==========================================================================================================================
+This LB is single constant entry point to the nodes.
+This LB wll take the request and route the trafic to nodes based on the round robin algorithem.
+Just replace NodePort to Load Balance it will become a LoadBalancer
+External Client --> LB --> Nodes --> Services --> PODS
+
+vim svc1.yaml
+------------
+apiVersion: v1
+kind: Service
+metadata:
+   name: nginx-service
+spec:
+   type: LoadBalancer     #if your not specifying any tpe by default is ClusterIP which will  be not accessable from the external world.
+   ports:
+    -port: 80          # The port this nginx-service will be available on.
+	 targetPort: 8080  # The port is container port the service will forward to  (in the pod we have tag called containerPort)
+	 nodePort: 30123   #the service will be accessable through port 30123  of each of the cluster.
+   selector: 
+     app: nginx-dev       # All pods with label app = nginx  will be part of this service. (here ky value should be same as pod label key and value)
+
+$kubectl apply -f 	svc1.yaml
+
+#Note: 
+Service Ip type is cluster IP by default.
+Service provides the NodePort as well.
+
+
+#Change the Nginx port in pod.
+ containers:
+  - name: nginx
+    image: nginx
+    command: ["/bin/sh","-c"]
+    args: ["sed -i 's/listen  .*/listen 81;/g' /etc/nginx/conf.d/default.conf && exec nginx -g 'daemon off;'"]
+    ports:
+    - containerPort: 81
+
