@@ -1,0 +1,164 @@
+#/bin/bash
+
+#Deployment
+Deployment is an object which can own ReplicaSets and update them and their Pods via declarative, server-side rolling updates. While ReplicaSets can be used independently, today they're mainly used by Deployments as a mechanism to orchestrate Pod creation, deletion and updates. When you use Deployments you don't have to worry about managing the ReplicaSets that they create. Deployments own and manage their ReplicaSets. As such, it is recommended to use Deployments when you want ReplicaSets
+
+Deloyment create ReplicaSet and ReplicaSet crates Pods and pods contain the containers.
+
+#Create deployment using command line
+$kubectl create deployment my-nginx --image=nginx:1.14.2 -l app=nginx : #will get Error Read below note
+#Note: 
+At the time of deployment creation using command line tool lable will not be support.
+At the time of deployment creation label also get created by default using deployment name.
+
+$kubectl create deployment nginx-deployment --image=nginx:latest : 
+
+#We can also create replicaset along with deployment 
+kubectl create deployment nginx-deployment --image=nginx:latest --replicas=3
+
+In order to overwrite that label then use below command.
+$kubectl label deployment <deployment-name> <klabel-key>=<value> --overwrite=true :
+
+#we can also update pod label
+$kubectl label pod <pod-name> <klabel-key>=<value> --overwrite=true :
+
+
+#Define manifest name called nginx-deployment.yaml
+        apiVersion: apps/v1
+        kind: Deployment
+        metadata:
+          name: nginx-deployment
+        spec:
+          selector:
+            matchLabels:
+              app: nginx
+          replicas: 2 # tells deployment to run 2 pods matching the template
+          template:
+            metadata:
+              labels:
+                app: nginx
+            spec:
+              containers:
+              - name: nginx
+                image: nginx:1.14.2
+                ports:
+                - containerPort: 80
+                
+#Create a file and paster the above content        
+#Run the above file using below command to become an deployment
+$kubectl apply -f <name-of-the-deployment-file>
+
+#Edit the deployment
+$kubectl edit deployment/<deployment-name>:
+
+#Now expose after deployment for web access
+$kubectl expose deployment <name-of-the-deployment> --port=80 --type=LoadBalancer --name=<svc name-any> :
+$kubectl expose deployment nginx-deployment --port=80 --type=LoadBalancer :
+
+#if we want create the service yaml file using comamnd line
+$kubectl expose deployment <name-of-the-deployment> --port=80 --type=LoadBalancer --name=<svc name-any> --NodePort -o yaml > "service-name.yaml":
+
+#k8s pods details structure
+$kubectl get pods:
+READY   STATUS    RESTARTS   AGE
+nginx-deployment-7fb96c846b-9f9wd   1/1     Running   0          44m
+
+#Note:  rollout 
+Once Deployment is created then you would like to update image version in the Deployment then use the following command.
+$kubectl set image deployment/<name> nginx=ngainx:<version>:
+
+#to see the rollout status
+$kubectl rollout status deployment/<name> :
+$kubectl get deployment:
+$kubectl describe deployment/<name>:
+
+#Deployment contain the replicaset
+#Edit the deployment
+#Scale the pods after deployment as well using below command
+#update the deployment with autoscale``
+$kubectl scale --current-replicas=2 --replicas=3 deployment/mysql  # If the deployment named mysql's current size is 2, scale mysql to 3
+
+
+#Note: 
+Pods contains lables, namespace, container details[name,image, ports, protocol, volumes], status[Initialized, Ready, ContainersReady, PodScheduled],
+               container-statuses[containerID, image, name, state], hostIp, phase, podIps, startTime
+               
+
+
+#A HorizontalPodAutoscaler YAML definition
+-----------------------------------------
+Horizontal pod autoscaling is the automatic scaling of the number of pod replicas managed by a controller. It’s performed by the Horizontal controller, which is enabled and
+configured by creating a HorizontalPodAutoscaler (HPA) resource. The controller
+periodically checks pod metrics, calculates the number of replicas required to meet
+the target metric value configured in the HorizontalPodAutoscaler resource, and
+adjusts the replicas field on the target resource (Deployment, ReplicaSet, ReplicationController, or StatefulSet). 
+15.1.1 Understanding the autoscaling process
+The autoscaling process can be split into three steps:
+ Obtain metrics of all the pods managed by the scaled resource object.
+ Calculate the number of pods required to bring the metrics to (or close to) the
+specified target value.
+ Update the replicas field of the scaled resource.
+
+
+apiVersion: autoscaling/v2beta1 
+kind: HorizontalPodAutoscaler 
+metadata:
+ name: kubia 
+spec:
+ maxReplicas: 5 
+ metrics: 
+ - resource: 
+     name: cpu 
+     targetAverageUtilization: 30 
+   type: Resource 
+ minReplicas: 1 
+ scaleTargetRef: 
+    apiVersion: extensions/v1beta1 
+    kind: Deployment 
+    name: kubia 
+status:
+ currentMetrics: [] 
+ currentReplicas: 3 
+ desiredReplicas: 0 
+
+$kubectl autoscale deployment kubia --cpu-percent=30 --min=1 --max=5 :
+deployment "kubia" autoscaled
+
+
+============================================================================================================
+#Service and Deployment in single maniest file
+============================================================================================================
+apiVersion: v1
+kind: Service
+metadata:
+  name: my-nginx-svc
+  labels:
+    app: nginx
+spec:
+  type: LoadBalancer
+  ports:
+  - port: 80
+  selector:
+    app: nginx
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: my-nginx
+  labels:
+    app: nginx
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: nginx
+  template:
+    metadata:
+      labels:
+        app: nginx
+    spec:
+      containers:
+      - name: nginx
+        image: nginx:1.14.2
+        ports:
+        - containerPort: 80
