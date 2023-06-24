@@ -1,0 +1,92 @@
+#!/bin/bash
+
+#Daemonset:
+Exactly one copy of  pod should run in all the nodes(means every node should run have atleast one pod).
+Without Daemonset while creating the pods we can not control the pods that goes to which node, so that in this case there may be a chance some time all thepods get run in one node only  in that case if that node down or crash then our application is also get crash, so avoid such cases we make sure ech node should run atleast one pod will run by using Daemonset as system service.
+#ds.yaml
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: logging
+spec:
+  selector:
+    matchLabels:
+      app: httpd-logging
+  template:
+    metadata:
+      labels:
+        app: httpd-logging
+    spec:
+      containers:
+        - name: webserver
+          image: httpd
+          ports:
+            - containerPort: 80
+            
+#Create a daemonset:            
+$kubectl apply -f ds.yaml
+
+#Check the pod running:
+kubectl get pods -n kube-system
+
+#Check no. of nodes:
+kubectl get nodes
+
+#How to check Daemonset status in k8s?
+$kubectl top
+
+#Display your daemon sets:     
+$kubectl get daemonsets      
+
+#Get details of a daemonset:
+$kubectl describe  ds <ds-name>
+
+#Edit a daemonset:
+$kubectl edit ds  <ds-name>
+
+#Delete a daemonset:
+$kubectl deleted ds <ds-name>
+
+#Some uses of a DaemonSet are:
+running a cluster storage daemon, such as glusterd, ceph, on each node.
+running a logs collection daemon on every node, such as fluentd or logstash.
+running a 
+
+#Running Pods on Only Some Nodes
+If you specify a .spec.template.spec.mode selector, then the DaemonSet controller will create Pods on nodes which match that node selector.
+spec:
+   nodeSelector:
+      environment: prod
+
+Now, If you mention a .spec.template.spec.affinity, then DaemonSet controller will be creating the Pods on nodes which will be matching the node affinity.
+
+spec:
+  tolerations:
+    - key: node-role.kubernetes.io/master
+      effect: NoSchedule
+In case you will not specify anything, then the controller will be creating Pods on every node of the cluster.
+
+
+#Expose daemonset as service for accessing the pods from outside the world
+Step1: Create an service with matching label of daemonset
+ds-svc.yaml
+----------
+apiVersion: v1
+kind: Service
+metadata:
+  name: my-nginx
+  labels:
+    app: httpd-logging
+spec:
+  type: LoadBalancer #if no type specified then by default clusterip
+  ports:
+  - port: 80
+    protocol: TCP
+  selector:
+    app: httpd-logging
+    
+ #Create service
+ $kubectl apply -f ds-svc.yaml
+ 
+ #List service
+ $kubectl get svc
