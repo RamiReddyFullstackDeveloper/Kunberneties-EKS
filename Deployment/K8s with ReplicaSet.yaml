@@ -1,0 +1,190 @@
+#!/bin/bash
+
+#K8s with ReplicasSet
+
+Note: We can not create ReplicaSet through command line tool called kubectl.
+ReplicaSet is part of Deployment only.
+
+Note: We can create replicaset using manifest file and attach to pods by using selector. but before creating replics pod should be up and running. bcz replicaset using pods labels.
+
+#ReplicaSet:
+ReplicaSet purpose is maintain stable set of replica pods running at given any time.
+#How a ReplicaSet works 
+ReplicaSet is defined with fields, incuding a selector that specifies how to identify pods that it can acquire.
+A number of replicas identifying that how many of pods it should be maintaining, and pod template specifying the data of new pods it should create to meet the number of replicas criteria.
+
+$kubectl run my-nginx --image=nginx --replicas=3 --port=80: in this kubectl run will create a deployment or job to manage the created container(s).
+Deployment-->ReplicaSet-->Pod this is how kubernetes works.
+
+apiVersion: apps/v1
+kind: ReplicaSet
+metadata:
+  name: backend
+  labels:
+    app: guestbook
+    tier: backend
+spec:
+  # modify replicas according to your case
+  replicas: 3
+  selector:
+    matchLabels:
+      tier: backend
+  template:
+    metadata:
+      labels:
+        tier: backend
+    spec:
+      containers:
+      - name: nginx
+        image: nginx #by default location is docker
+       # image: gcr.io/google_samples/gb-frontend:v3  #image location if we want specify
+
+Note: Above we have given replicas count 3, that means it create three prods among the nodes, if one of the pod crashed or disappear it immediately create another one by checking template selctor using new image.
+
+Note: Contianer nature is ephermal storage, that means once container get crashed the data will be lost, so to overcome this problem we need to have persistant storage. that PV we will be assigned to container. then even though container will get deleted the data will be get backuped in persistant storage and whenever new pod getting create the data will be getting from Persistant storage. here persistant storage is volumes as backup the data.
+
+#list replicaset
+$kubectl get rs
+#describe replicaset
+kubectl describe rs/frontend
+#delete replicaset
+$kubectl delete rs <rs-name>
+
+#update the replicaset using command line
+$kubectl autoscale rs frontend --max=10 --min=3 --cpu-percent=50 :
+
+kubectl autoscale deployment/delete-deployment-bddf79c77 --max=10 --min=1
+
+Note: When we delete the replicaset then all running pods will get delete automaticaly then there a probel right.
+So if we don't want delete the running pods even after delete the replicaset then use the below command'
+$kubectl delete rc/<name-of-replica> --cascade=orphan:
+Then no replacement pod will get created. bz we deleted the rc.
+
+#Moving pods in and out of the scope of a ReplicationController
+Pods created by a ReplicationController aren’t tied to the ReplicationController in
+any way. At any moment, a ReplicationController manages pods that match its label
+selector. By changing a pod’s labels, it can be removed from or added to the scope
+of a ReplicationController. It can even be moved from one ReplicationController to
+another.
+TIP Although a pod isn’t tied to a ReplicationController, the pod does reference it in the metadata.ownerReferences field, which you can use to easily
+find which ReplicationController a pod belongs to.
+If you change a pod’s labels so they no longer match a ReplicationController’s label
+selector, the pod becomes like any other manually created pod. It’s no longer managed by anything. If the node running the pod fails, the pod is obviously not rescheduled. But keep in mind that when you changed the pod’s labels, the replication
+controller noticed one pod was missing and spun up a new pod to replace it.
+ Let’s try this with your pods. Because your ReplicationController manages pods
+that have the app=kubia label, you need to either remove this label or change its value
+to move the pod out of the ReplicationController’s scope. Adding another label will
+have no effect, because the ReplicationController doesn’t care if the pod has any additional labels. It only cares whether the pod has all the labels referenced in the label
+selector. 
+This pod’s status is unknown, because its node is unreachable.
+This pod was created five seconds ago.
+Introducing ReplicationControllers 99
+ADDING LABELS TO PODS MANAGED BY A REPLICATIONCONTROLLER
+Let’s confirm that a ReplicationController doesn’t care if you add additional labels to
+its managed pods:
+$ kubectl label pod kubia-dmdck type=special :
+pod "kubia-dmdck" labeled
+$ kubectl get pods --show-labels:
+NAME READY STATUS RESTARTS AGE LABELS
+kubia-oini2 1/1 Running 0 11m app=kubia
+kubia-k0xz6 1/1 Running 0 11m app=kubia
+kubia-dmdck 1/1 Running 0 1m app=kubia,type=special
+You’ve added the type=special label to one of the pods. Listing all pods again shows
+the same three pods as before, because no change occurred as far as the ReplicationController is concerned.
+CHANGING THE LABELS OF A MANAGED POD
+Now, you’ll change the app=kubia label to something else. This will make the pod no
+longer match the ReplicationController’s label selector, leaving it to only match two
+pods. The ReplicationController should therefore start a new pod to bring the number back to three:
+$ kubectl label pod kubia-dmdck app=foo --overwrite:
+pod "kubia-dmdck" labeled
+The --overwrite argument is necessary; otherwise kubectl will only print out a warning and won’t change the label, to prevent you from inadvertently changing an existing label’s value when your intent is to add a new one. 
+ Listing all the pods again should now show four pods: 
+$ kubectl get pods -L app:
+NAME READY STATUS RESTARTS AGE APP
+kubia-2qneh 0/1 ContainerCreating 0 2s kubia 
+kubia-oini2 1/1 Running 0 20m kubia
+kubia-k0xz6 1/1 Running 0 20m kubia
+kubia-dmdck 1/1 Running 0 10m foo 
+NOTE You’re using the -L app option to display the app label in a column.
+There, you now have four pods altogether: one that isn’t managed by your ReplicationController and three that are. Among them is the newly created pod.
+ Figure 4.5 illustrates what happened when you changed the pod’s labels so they no
+longer matched the ReplicationController’s pod selector. You can see your three pods
+and your ReplicationController. After you change the pod’s label from app=kubia to
+app=foo, the ReplicationController no longer cares about the pod. Because the controller’s replica count is set to 3 and only two pods match the label selector, the
+
+#Adding lables to Pods Managed by ReplicationController.
+$ kubectl get pods --show-labels:
+NAME READY STATUS RESTARTS AGE LABELS
+kubia-oini2 1/1 Running 0 11m app=kubia
+kubia-k0xz6 1/1 Running 0 11m app=kubia
+kubia-dmdck 1/1 Running 0 1m app=kubia,type=special
+#How to take perticular prod from out of Replication controller?
+By changin the label selector in pod, th movement we changed label slector in pod it the pod immediately coming out from the RC using below command.
+$ kubectl label pod kubia-dmdck app=foo --overwrite:   #scale out
+$ kubectl get pods --show-labels:
+NAME READY STATUS RESTARTS AGE LABELS
+kubia-oini2     1/1     Running     0 11m app=kubia
+kubia-k0xz6     1/1     Running     0 11m app=kubia
+kubia-dmdck     1/1     Running     0 1m  app=kubia
+backend-94ngx   1/1    Running      0 20m tier=backend
+
+Note1: when we run the above command new pod will get created with new label called (backend) and that pod is not managed by replication controller, bcz we changed the label selctor and this label is not matching with RC matchLabels. And if we created replicaset as 3 before and three pods will be running, and eventhough if we take out one pod from the replication controller immidiately new pods will get created bcz pods will keep cheking the the labels selector of (RC nature is it must be run with how many replcaset we defined in RC.)
+
+$kubectl get pods --show-labels :
+Note2: Now if we try to delete the new pod that we created with new labels then no replacement pod will be created bcz the pod not managed by the any RC. soit is un managed pods.
+$kubectl delete pod/kubia-dmdcz :
+$kubectl get pods --show-labels :
+NAME READY STATUS RESTARTS AGE LABELS
+kubia-oini2      1/1     Running    0   11m app=kubia
+kubia-k0xz6      1/1     Running    0   11m app=kubia
+kubia-dmdck      1/1     Running    0   1m  app=kubia
+
+
+#Note: The above statement says how to take the pod out. now let see how to newly created pod take in to the Replication Controller.
+Now lets see we taking out one pod  from ReplicationController by changing the label above , now again we want to take in to RC, we can achive this by changing the label selctor and now pods will stills run three only bcz we have give replicas as 3 at the time RecplicationController creation so the newly added pod will be destroyed. suppose RC count is 4 then it won't destroyed that newly added pod also part of managed one.
+
+
+#Changing the Pod Template in ReplicaController
+Step1: If we change the pod template image name from nginx to httpd either editing the yaml file of RC and apply or editing the replicaset directly. is any impact on the existing runnin pods? Answere is no.
+In Realistic scenario: go replicaSet and change the image name. then
+$kubectl apply -f replicaset-rs.yaml:
+
+Step2: Why no impact: Bcz pods will keep checking label selector that is matching with ReplicaSet pod template if runing pods count is matching with number of replicas that we defined in RC manifest file, then no impact on existing running pods.
+
+Step3: When impact: Impact will be on running pods the movement we delete the running pods and immediately new pod wll be created by RC with new image (bcz in pod template of RC we changed the image name from nginx to httpd)
+$kubectl delete pod/<pod-name> :
+
+$kubectl get pods --show-labels:
+NAME READY STATUS RESTARTS AGE LABELS
+kubia-oini2 1/1 Running 0 11m app=kubia   #nginx
+kubia-k0xz6 1/1 Running 0 11m app=kubia   #nginx
+kubia-k0xz6 1/1 Running 0 11m app=kubia   #httd
+
+#Scale In Scenario:
+After scale out the pod from RC and if we try to scale in again by changing the label sector by editing the pod and the pod won't get added to the RC it will get removed. bcz the movement we scale out immediately new pod will get created bcz it will check replication count.
+Scenario1: If we want to bring this scale out pod into scale in first create new RS manifest file with matching labels and apply. Here at the time of RS manifest file creation if we specfied replication count is 3 it will create only 2 pods bcz aready a pod is running with same matching labels.
+root@cloudshell:~ (my-second-project-389507)$ kubectl get pods --show-labels
+NAME             READY   STATUS    RESTARTS   AGE     LABELS
+backend-94ngx    1/1     Running   0          20m     tier=backend
+backend-k7k8t    1/1     Running   0          20m     tier=backend
+backend-22l4s   1/1     Running   0          6h15m    tier=backend
+
+#Note: Delete replicaset
+The movement if we delete the replicaset all associated pods will be get deleted automatically with latest image.
+
+
+#update the replicaset using command line
+$kubectl autoscale rs frontend --max=10 --min=3 --cpu-percent=50 :
+
+#Ways to scale the pods
+1> edit manifest file and apply 
+2> direct edit the replicaset
+3> kubectl autoscale or kubectl scale
+
+
+
+
+#Alternatives to ReplicaSet
+============================
+Deployment (recommended)
+Deployment is an object which can own ReplicaSets and update them and their Pods via declarative, server-side rolling updates. While ReplicaSets can be used independently, today they're mainly used by Deployments as a mechanism to orchestrate Pod creation, deletion and updates. When you use Deployments you don't have to worry about managing the ReplicaSets that they create. Deployments own and manage their ReplicaSets. As such, it is recommended to use Deployments when you want ReplicaSet
