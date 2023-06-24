@@ -1,5 +1,7 @@
 #From official website Step by step how to create pv, pvc and pods
 https://kubernetes.io/docs/tasks/configure-pod-container/configure-persistent-volume-storage/
+https://www.baeldung.com/ops/kubernetes-pv-vs-pvc
+https://medium.com/avmconsulting-blog/persistent-volumes-pv-and-claims-pvc-in-kubernetes-bd76923a61f6
 
 #PV: 
 PV is a pieace of storage in kubernete cluster that has been provisioned by administrator or dynamically provisioned by storage classes. It is a resource n the cluster just like a node in the cluster.
