@@ -7,6 +7,9 @@ https://medium.com/avmconsulting-blog/persistent-volumes-pv-and-claims-pvc-in-ku
 PV is a pieace of storage in kubernete cluster that has been provisioned by administrator or dynamically provisioned by storage classes. It is a resource n the cluster just like a node in the cluster.
 PVs are volume pluggins like  volumes, but have the lifecyle independent of any individual pods that uses the PV. This API Object captures the details of the implementation of the storage, be that NFS, or cloud provider specific storage system.
 
+Note: Create volume directory in host machine(ubuntu machine) like below.
+mkdir /mnt/data/redis on a node in the cluster.
+
 create-pv.yaml:
 ---
 apiVersion: v1
@@ -23,7 +26,7 @@ spec:
     path: /mnt/data/redis
 
 kubectl apply -f create-pv.yaml
-Note that you will have to create this directory /mnt/data/redis on a node in the cluster.
+
 
 #PVC:
 PVC used for claim the storage amount to containers requested by user. It is similarly to a pod. pod consumes node resources and PVCs consumes PV resource.
