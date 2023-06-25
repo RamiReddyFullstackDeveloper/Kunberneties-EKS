@@ -48,6 +48,10 @@ spec:
 	  
 kubectl apply -f create-pvc.yaml
 
+Note: After you create the PersistentVolumeClaim, the Kubernetes control plane looks for a PersistentVolume that satisfies the claim's requirements. 
+      If the control plane finds a suitable PersistentVolume with the same StorageClass, it binds the claim to the volume.
+
+
 #Deploy the container with PVC that requested for PV
 
 reate-redis-deployment.yaml
